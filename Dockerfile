@@ -17,4 +17,4 @@ COPY . .
 
 # Run the web service on container startup.
 # Note: For Cloud Run Jobs, we execute the script directly. 
-CMD ["python", "main.py"]
+ENTRYPOINT ["python", "main.py"]
