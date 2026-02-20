@@ -1,0 +1,41 @@
+steps:
+  # 1. Build the Container Image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-ops/casting-alerts-runner:$COMMIT_SHA'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-ops/casting-alerts-runner:latest'
+      - '.'
+
+  # 2. Push the Image to Artifact Registry
+  # The 'cloud-build-deployer' SA has permission to write to this repo.
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'push'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-ops/casting-alerts-runner'
+
+  # 3. Update the Cloud Run Job
+  # We explicitly tell it to use the 'casting-alerts-runner' SA for runtime.
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'jobs'
+      - 'update'
+      - 'casting-bot-job'
+      - '--image'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-ops/casting-alerts-runner:latest'
+      - '--service-account'
+      - 'casting-alerts-runner@improv-boulder-ops.iam.gserviceaccount.com'
+      - '--region'
+      - 'us-central1'
+      - '--max-retries=0'
+      - '--parallelism=1'
+      - '--task-timeout=300s'
+
+# This section lets the logs link back to the specific built images
+images:
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-ops/casting-alerts-runner:$COMMIT_SHA'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-ops/casting-alerts-runner:latest'
