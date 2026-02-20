@@ -11,9 +11,9 @@ from googleapiclient import discovery
 
 # Configure logging for Cloud Run (structured text)
 logging.basicConfig(
-    level=logging.INFO, 
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ def connect_to_sheets_service() -> discovery.Resource:
     Cloud Run: Uses the attached Service Account automatically.
     """
     logger.info("Connecting to Google Sheets service...")
-    scopes = ['https://www.googleapis.com/auth/spreadsheets.readonly']
+    scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
     # google.auth.default() automatically looks for credentials in this order:
     # 1. GOOGLE_APPLICATION_CREDENTIALS env var.
@@ -39,25 +39,22 @@ def connect_to_sheets_service() -> discovery.Resource:
     creds, project_id = google.auth.default(scopes=scopes)
     logging.debug(f"Connected to project {project_id}.")
     return discovery.build(
-        'sheets',
-        'v4',
+        "sheets",
+        "v4",
         credentials=creds,
         cache_discovery=False,
     )
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Improv Boulder Production Alerts")
+    parser = argparse.ArgumentParser(description="Improv Boulder Production Alerts")
     parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Run without sending external alerts",
     )
     parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable debug-level logging."
+        "--debug", action="store_true", help="Enable debug-level logging."
     )
     return parser.parse_args()
 
@@ -78,6 +75,7 @@ def main():
     # TODO: Send Slack messages.
 
     logger.info("Job completed successfully.")
+
 
 if __name__ == "__main__":
     main()
