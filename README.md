@@ -6,11 +6,11 @@ A Python automation for Improv Boulder that monitors casting spreadsheets and al
 To build the Docker container:
 
 ```
-docker build -t casting-bot
+docker build -t casting-alerts-bot
 ```
 
 To run the container:
 
 ```
-docker run --env-file .env casting-bot
+docker run --env-file .env casting-alerts-bot
 ```
