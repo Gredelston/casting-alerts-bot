@@ -4,9 +4,9 @@ steps:
     args: 
       - 'build'
       - '-t'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-ops/casting-alerts-runner:$COMMIT_SHA'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-boulder-ops/casting-alerts-runner:$COMMIT_SHA'
       - '-t'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-ops/casting-alerts-runner:latest'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-boulder-ops/casting-alerts-runner:latest'
       - '.'
 
   # 2. Push the Image to Artifact Registry
@@ -14,7 +14,7 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: 
       - 'push'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-ops/casting-alerts-runner'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-boulder-ops/casting-alerts-runner'
 
   # 3. Update the Cloud Run Job
   # We explicitly tell it to use the 'casting-alerts-runner' SA for runtime.
@@ -26,7 +26,7 @@ steps:
       - 'update'
       - 'casting-bot-job'
       - '--image'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-ops/casting-alerts-runner:latest'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-boulder-ops/casting-alerts-runner:latest'
       - '--service-account'
       - 'casting-alerts-runner@improv-boulder-ops.iam.gserviceaccount.com'
       - '--region'
@@ -37,8 +37,8 @@ steps:
 
 # This section lets the logs link back to the specific built images
 images:
-  - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-ops/casting-alerts-runner:$COMMIT_SHA'
-  - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-ops/casting-alerts-runner:latest'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-boulder-ops/casting-alerts-runner:$COMMIT_SHA'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-boulder-ops/casting-alerts-runner:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY
