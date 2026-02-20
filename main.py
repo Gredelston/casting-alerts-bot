@@ -17,16 +17,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Hardcoded spreadsheet ID.
+# Hardcoded spreadsheet info.
 SPREADSHEET_ID = "1sOcW4siUOLxd5Mt6WeOQ9vk05LZXDA6rHXulHcdQP4A"
+CASTING_TAB_NAME = "Casting Info"
+CONFIG_TAB_NAME = "AlertsConfig"
 
 
 def connect_to_sheets_service() -> discovery.Resource:
-    """Authenticate with Google using Application Default Credentials.
-
-    Locally: Uses GOOGLE_APPLICATION_CREDENTIALS env var.
-    Cloud Run: Uses the attached Service Account automatically.
-    """
+    """Authenticate with Google using Application Default Credentials."""
     logger.info("Connecting to Google Sheets service...")
     scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
@@ -44,6 +42,29 @@ def connect_to_sheets_service() -> discovery.Resource:
         credentials=creds,
         cache_discovery=False,
     )
+
+
+def fetch_sheet_values(
+    sheets_service: discovery.Resource,
+    spreadsheet_id: str,
+    range_name: str,
+) -> list[list[str]]:
+    """Retrieve all spreadsheet values from a specific range or tab."""
+    logger.debug(
+        "Attempting to fetch range %s from spreadsheet %s",
+        range_name,
+        spreadsheet_id,
+    )
+    result = (
+        sheets_service.spreadsheets()
+        .values()
+        .get(
+            spreadsheetId=spreadsheet_id,
+            range=range_name,
+        )
+        .execute()
+    )
+    return result.get("values", [])
 
 
 def parse_args() -> argparse.Namespace:
@@ -68,8 +89,40 @@ def main():
         logger.setLevel(logging.DEBUG)
 
     sheets_service = connect_to_sheets_service()
-    # TODO: Fetch casting data.
-    # TODO: Fetch deadline config.
+
+    casting_data = fetch_sheet_values(
+        sheets_service,
+        SPREADSHEET_ID,
+        CASTING_TAB_NAME,
+    )
+    if casting_data:
+        logging.info(
+            "Successfully fetched %d rows from '%s'.",
+            len(casting_data),
+            CASTING_TAB_NAME,
+        )
+    else:
+        logger.warning(
+            "No data found in '%s' (or tab does not exist).",
+            CASTING_TAB_NAME,
+        )
+
+    config_data = fetch_sheet_values(
+        sheets_service,
+        SPREADSHEET_ID,
+        CONFIG_TAB_NAME,
+    )
+    if config_data:
+        logging.info(
+            "Successfully fetched %d rows from '%s'.",
+            len(config_data),
+            CONFIG_TAB_NAME,
+        )
+    else:
+        logger.warning(
+            "No data found in '%s' (or tab does not exist).",
+            CONFIG_TAB_NAME,
+        )
     # TODO: Identify late castings.
     # TODO: Initialize Slack client.
     # TODO: Send Slack messages.
