@@ -39,3 +39,6 @@ steps:
 images:
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-ops/casting-alerts-runner:$COMMIT_SHA'
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-ops/casting-alerts-runner:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
