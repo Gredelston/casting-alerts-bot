@@ -24,7 +24,7 @@ steps:
       - 'run'
       - 'jobs'
       - 'update'
-      - 'casting-bot-job'
+      - 'casting-alerts-bot-job'
       - '--image'
       - 'us-central1-docker.pkg.dev/$PROJECT_ID/improv-boulder-ops/casting-alerts-runner:latest'
       - '--service-account'
