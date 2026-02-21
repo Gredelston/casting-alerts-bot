@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
 import argparse
+import dataclasses
+import datetime
+import enum
 import logging
 import os
 import sys
@@ -21,6 +24,31 @@ logger = logging.getLogger(__name__)
 SPREADSHEET_ID = "1sOcW4siUOLxd5Mt6WeOQ9vk05LZXDA6rHXulHcdQP4A"
 CASTING_TAB_NAME = "Casting Info"
 CONFIG_TAB_NAME = "AlertsConfig"
+
+
+class ShowLocation(enum.StrEnum):
+    LOUISVILLE_UNDERGROUND = "Louisville Underground"
+    FULL_CYCLE =  "Full Cycle"
+    THE_END = "The End"
+
+
+@dataclasses.dataclass
+class Show:
+    date: datetime.date
+    cancelled: bool
+    location: ShowLocation
+    host: str
+    stage_manager: str
+    greeter: str
+    teams: list[str]
+
+    def is_past(self) -> bool:
+        """Check whether a show occurred in the past."""
+        return self.date < datetime.date.today()
+
+
+class ShowParsingError(ValueError):
+    """Raised when we fail to parse show data from the casting spreadsheet."""
 
 
 def connect_to_sheets_service() -> discovery.Resource:
@@ -67,6 +95,40 @@ def fetch_sheet_values(
     return result.get("values", [])
 
 
+def parse_shows(casting_data: list[list[str]]) -> list[Show]:
+    header_row = casting_data[0]
+    date_column = header_row.index("Date")
+    cancelled_column = header_row.index("Cancelled?")
+    location_column = header_row.index("Location")
+    host_column = header_row.index("Host")
+    stage_manager_column = header_row.index("Stage Manager")
+    greeter_column = header_row.index("Greeter")
+    teams_column = header_row.index("Team Order")
+    shows: list[Show] = []
+    for row in casting_data[1:]:
+        if not row[date_column]:
+            continue
+        while len(row) < len(header_row):
+            row.append('')
+        date = datetime.date.fromisoformat(row[date_column])
+        try:
+            shows.append(Show(
+                date=datetime.date.fromisoformat(row[date_column]),
+                cancelled=row[cancelled_column] == "TRUE",
+                location=ShowLocation(row[location_column]),
+                host=row[host_column],
+                stage_manager=row[stage_manager_column],
+                greeter=row[greeter_column],
+                teams=row[teams_column].split("\n"),
+            ))
+        except Exception as e:
+            if date < datetime.date.today():
+                logger.warning("Error parsing show in the past: %s", e)
+            else:
+                raise ShowParsingError(date) from e
+    return shows
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Improv Boulder Production Alerts")
     parser.add_argument(
@@ -106,6 +168,20 @@ def main():
             "No data found in '%s' (or tab does not exist).",
             CASTING_TAB_NAME,
         )
+
+    shows = parse_shows(casting_data)
+    if shows:
+        logger.info("Successfully parsed %d shows.", len(shows))
+    else:
+        raise ShowParsingError("Failed to parse any shows.")
+
+    upcoming_shows = [show for show in shows if not show.is_past()]
+    if upcoming_shows:
+        logger.info("Upcoming shows: %d", len(upcoming_shows))
+        for i, show in enumerate(upcoming_shows):
+            logger.info("%d.\t%s", i+1, show)
+    else:
+        raise ShowParsingError("No upcoming shows found.")
 
     config_data = fetch_sheet_values(
         sheets_service,
