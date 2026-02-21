@@ -28,7 +28,7 @@ CONFIG_TAB_NAME = "AlertsConfig"
 
 class ShowLocation(enum.StrEnum):
     LOUISVILLE_UNDERGROUND = "Louisville Underground"
-    FULL_CYCLE =  "Full Cycle"
+    FULL_CYCLE = "Full Cycle"
     THE_END = "The End"
 
 
@@ -109,18 +109,20 @@ def parse_shows(casting_data: list[list[str]]) -> list[Show]:
         if not row[date_column]:
             continue
         while len(row) < len(header_row):
-            row.append('')
+            row.append("")
         date = datetime.date.fromisoformat(row[date_column])
         try:
-            shows.append(Show(
-                date=datetime.date.fromisoformat(row[date_column]),
-                cancelled=row[cancelled_column] == "TRUE",
-                location=ShowLocation(row[location_column]),
-                host=row[host_column],
-                stage_manager=row[stage_manager_column],
-                greeter=row[greeter_column],
-                teams=row[teams_column].split("\n"),
-            ))
+            shows.append(
+                Show(
+                    date=datetime.date.fromisoformat(row[date_column]),
+                    cancelled=row[cancelled_column] == "TRUE",
+                    location=ShowLocation(row[location_column]),
+                    host=row[host_column],
+                    stage_manager=row[stage_manager_column],
+                    greeter=row[greeter_column],
+                    teams=row[teams_column].split("\n"),
+                )
+            )
         except Exception as e:
             if date < datetime.date.today():
                 logger.warning("Error parsing show in the past: %s", e)
@@ -179,7 +181,7 @@ def main():
     if upcoming_shows:
         logger.info("Upcoming shows: %d", len(upcoming_shows))
         for i, show in enumerate(upcoming_shows):
-            logger.info("%d.\t%s", i+1, show)
+            logger.info("%d.\t%s", i + 1, show)
     else:
         raise ShowParsingError("No upcoming shows found.")
 
