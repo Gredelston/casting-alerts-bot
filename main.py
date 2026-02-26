@@ -4,6 +4,7 @@ import argparse
 import dataclasses
 import datetime
 import enum
+import functools
 import logging
 import os
 import sys
@@ -79,6 +80,45 @@ class SlackClient:
                 f"SLACK_BOT_TOKEN is incorrectly wrapped in quotes. Literal value: {token}"
             )
         return token
+
+    @functools.cached_property
+    def _all_users(self) -> list[dict[str, Any]]:
+        """Get a full list of all Slack users."""
+        users = []
+        cursor = None
+        logger.debug("Fetching list of all Slack users...")
+        while True:
+            response = self._client.users_list(cursor=cursor)
+            if response["members"]:
+                users.extend(response["members"])
+            if response["response_metadata"]["next_cursor"]:
+                cursor = next_cursor
+            else:
+                break
+        logger.debug("Found %d Slack users.", len(users))
+        return users
+
+    def get_user_id_by_name(self, name: str) -> str:
+        """Look up a user ID by their full name.
+
+        Returns:
+            ValueError: If no user is found with the given name.
+            ValueError: If multiple users are found with the given name.
+        """
+        logger.debug("Searching for Slack user with name '%s'...", name)
+        user_id = ""
+        for user in self._all_users:
+            if user["profile"]["real_name"] != name:
+                continue
+            if user_id:
+                raise ValueError(
+                    f"Two Slack users found with name '{name}': {user_id}, {user['id']}"
+                )
+            user_id = user["id"]
+        if not user_id:
+            raise ValueError("No Slack user found with name '{name}'")
+        logger.debug("Found Slack user ID %s for user '%s'.", user_id, name)
+        return user_id
 
     def get_user_id_by_email(self, email: str) -> str:
         """Look up a user ID by their registered email address."""
@@ -267,6 +307,7 @@ def main():
     # TODO: Identify late castings.
     slack_client = SlackClient(dry_run=args.dry_run)
     send_hello_world_via_slack(slack_client, "gredelston@gmail.com")
+    logger.info("Greg's user ID: %s", slack_client.get_user_id_by_name("Greg Edelston"))
     # TODO: Send Slack messages.
 
     logger.info("Job completed successfully.")
