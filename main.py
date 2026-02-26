@@ -11,6 +11,8 @@ from typing import Any
 
 import google.auth
 from googleapiclient import discovery
+import slack_sdk
+import slack_sdk.errors
 
 # Configure logging for Cloud Run (structured text)
 logging.basicConfig(
@@ -144,6 +146,29 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def send_hello_world_via_slack(email_to_notify: str) -> None:
+    """Send a test DM to the specified email address."""
+    # Initialize the client.
+    # The `token` param to slack_sdk.WebClient() is optional, and will default
+    # to the env's SLACK_BOT_TOKEN, but we pass it explicitly just to be
+    # super obvious.
+    token = os.environ.get("SLACK_BOT_TOKEN")
+    if not token:
+        raise KeyError(f"Missing env var SLACK_BOT_TOKEN. Env: {os.env}")
+    slack_client = slack_sdk.WebClient(token=token)
+
+    # Look up user ID by email.
+    logger.info("Looking up user by email: %s", email_to_notify)
+    lookup_response = slack_client.users_lookupByEmail(email=email_to_notify)
+    user_id = lookup_response["user"]["id"]
+    logger.info("Found user ID: %s", user_id)
+
+    # Send the message.
+    message = "Hello, world!"
+    slack_client.chat_postMessage(channel=user_id, text=message)
+    logger.info("Sent message to user '%s': '''%s'''", user_id, message)
+
+
 def main():
     args = parse_args()
 
@@ -202,7 +227,8 @@ def main():
             CONFIG_TAB_NAME,
         )
     # TODO: Identify late castings.
-    # TODO: Initialize Slack client.
+    if not args.dry_run:
+        send_hello_world_via_slack("gredelston@gmail.com")
     # TODO: Send Slack messages.
 
     logger.info("Job completed successfully.")
