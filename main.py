@@ -6,6 +6,7 @@ import datetime
 import enum
 import functools
 import logging
+import re
 import os
 import sys
 from typing import Any
@@ -98,11 +99,12 @@ class SlackClient:
         logger.debug("Found %d Slack users.", len(users))
         return users
 
-    def get_user_id_by_name(self, name: str) -> str:
+    def get_user_id_by_name(self, name: str, allow_none: bool = False) -> str:
         """Look up a user ID by their full name.
 
         Returns:
-            ValueError: If no user is found with the given name.
+            ValueError: If no user is found with the given name (unless
+                allow_none is passed).
             ValueError: If multiple users are found with the given name.
         """
         logger.debug("Searching for Slack user with name '%s'...", name)
@@ -115,10 +117,15 @@ class SlackClient:
                     f"Two Slack users found with name '{name}': {user_id}, {user['id']}"
                 )
             user_id = user["id"]
-        if not user_id:
+        if user_id:
+            logger.debug("Found Slack user ID %s for user '%s'.", user_id, name)
+            return user_id
+        if not allow_none:
             raise ValueError("No Slack user found with name '{name}'")
-        logger.debug("Found Slack user ID %s for user '%s'.", user_id, name)
-        return user_id
+        logger.debug(
+            "No Slack user found with name '%s', but allowing due to allow_none."
+        )
+        return ""
 
     def get_user_id_by_email(self, email: str) -> str:
         """Look up a user ID by their registered email address."""
@@ -128,24 +135,53 @@ class SlackClient:
         logger.debug("Found Slack user ID: %s", user_id)
         return user_id
 
-    def send_message(self, user_id: str, message: str) -> None:
+    def post_message(self, conversation_id: str, message: str) -> None:
         """Send a message to the specified user.
+
+        Args:
+            conversation_id: The channel name/ID, user ID, user email, or user's
+                full name to post a message to.
+            message: The exact message to post.
 
         Raises:
             ValueError: If user_id doesn't look like a user ID.
         """
-        if "@" in user_id:
-            raise ValueError(f"User ID {user_id} looks like an email address.")
-        elif "#" in user_id:
-            raise ValueError(f"User ID {user_id} looks like a channel name.")
+        if re.fullmatch(r"[UW][A-Z0-9]{8,}", conversation_id):
+            logger.debug("Conversation ID '%s' looks like a user ID.", conversation_id)
+        elif re.fullmatch(r"[CG][A-Z0-9]{8,}", conversation_id):
+            logger.debug(
+                "Conversation ID '%s' looks like a channel ID.", conversation_id
+            )
+        elif re.fullmatch(r"#[a-z0-9-]+", conversation_id):
+            logger.debug(
+                "Conversation ID '%s' looks like a channel name.", conversation_id
+            )
+        elif re.fullmatch(r"\S+@\S+.\S+", conversation_id):
+            logger.debug(
+                "Conversation ID '%s' looks like an email address. Converting to user ID.",
+                conversation_id,
+            )
+            conversation_id = self.get_user_id_by_email(conversation_id)
+        else:
+            logger.debug(
+                "Conversation ID '%s' does not match a regular format. Attempting to find user with that name...",
+                conversation_id,
+            )
+            conversation_id = self.get_user_id_by_name(conversation_id, allow_none=True)
+            if not conversation_id:
+                raise ValueError(
+                    "Could not interpret Slack conversation ID: conversation_id"
+                )
         if self._dry_run:
             logger.info("Skipping Slack message for dry run.")
-            logger.info(f"Target user: {user_id}")
+            logger.info(f"Target conversation: {conversation_id}")
             logger.info(f"Message: '''{message}'''")
             return
-        logger.debug(f"Attempting to send Slack message to user {user_id}...")
-        self._client.chat_postMessage(channel=user_id, text=message)
-        logger.info(f"Sent message to user {user_id}: '''{message}'''")
+        logger.debug(
+            f"Attempting to send Slack message to conversation {conversation_id}..."
+        )
+        self._client.chat_postMessage(channel=conversation_id, text=message)
+        logger.info(f"Sent message to {conversation_id}: '''{message}'''")
 
 
 def connect_to_sheets_service() -> discovery.Resource:
@@ -241,12 +277,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def send_hello_world_via_slack(slack_client: SlackClient, user_email: str) -> None:
-    """Send a test DM to the specified email address."""
-    user_id = slack_client.get_user_id_by_email(user_email)
-    slack_client.send_message(user_id, "Hello, world!")
-
-
 def main():
     args = parse_args()
 
@@ -306,8 +336,7 @@ def main():
         )
     # TODO: Identify late castings.
     slack_client = SlackClient(dry_run=args.dry_run)
-    send_hello_world_via_slack(slack_client, "gredelston@gmail.com")
-    logger.info("Greg's user ID: %s", slack_client.get_user_id_by_name("Greg Edelston"))
+    slack_client.post_message("Greg Edelston", "Hello, world!")
     # TODO: Send Slack messages.
 
     logger.info("Job completed successfully.")
