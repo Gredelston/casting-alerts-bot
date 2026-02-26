@@ -53,6 +53,61 @@ class ShowParsingError(ValueError):
     """Raised when we fail to parse show data from the casting spreadsheet."""
 
 
+class SlackClient:
+    """A wrapper for slack_sdk.WebClient actions."""
+
+    def __init__(self, dry_run: bool) -> None:
+        # Initialize the WebClient.
+        # Technically the token param is optional, but passing it explicitly
+        # makes errors more obvious.
+        self._client = slack_sdk.WebClient(token=self._get_token())
+        self._dry_run = dry_run
+
+    @staticmethod
+    def _get_token() -> str:
+        """Fetch the SLACK_BOT_TOKEN from env vars.
+
+        Raises:
+            KeyError: If the env var is not found.
+            ValueError: If the env var is mistakenly wrapped in quotes.
+        """
+        token = os.environ.get("SLACK_BOT_TOKEN")
+        if not token:
+            raise KeyError(f"Missing env var SLACK_BOT_TOKEN. Env: {os.env}")
+        if token.startswith('"') or token.startswith("'"):
+            raise ValueError(
+                f"SLACK_BOT_TOKEN is incorrectly wrapped in quotes. Literal value: {token}"
+            )
+        return token
+
+    def get_user_id_by_email(self, email: str) -> str:
+        """Look up a user ID by their registered email address."""
+        logger.debug("Looking up Slack user by email: %s", email)
+        response = self._client.users_lookupByEmail(email=email)
+        user_id = response["user"]["id"]
+        logger.debug("Found Slack user ID: %s", user_id)
+        return user_id
+
+    def send_message(self, user_id: str, message: str) -> None:
+        """Send a message to the specified user.
+
+        Raises:
+            ValueError: If user_id doesn't look like a user ID.
+        """
+        if "@" in user_id:
+            raise ValueError(f"User ID {user_id} looks like an email address.")
+        elif "#" in user_id:
+            raise ValueError(f"User ID {user_id} looks like a channel name.")
+        if self._dry_run:
+            logger.info("Skipping Slack message for dry run.")
+            logger.info(f"Target user: {user_id}")
+            logger.info(f"Message: '''{message}'''")
+            return
+        logger.debug(f"Attempting to send Slack message to user {user_id}...")
+        self._client.chat_postMessage(channel=user_id, text=message)
+        logger.info(f"Sent message to user {user_id}: '''{message}'''")
+
+
 def connect_to_sheets_service() -> discovery.Resource:
     """Authenticate with Google using Application Default Credentials."""
     logger.info("Connecting to Google Sheets service...")
@@ -146,27 +201,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def send_hello_world_via_slack(email_to_notify: str) -> None:
+def send_hello_world_via_slack(slack_client: SlackClient, user_email: str) -> None:
     """Send a test DM to the specified email address."""
-    # Initialize the client.
-    # The `token` param to slack_sdk.WebClient() is optional, and will default
-    # to the env's SLACK_BOT_TOKEN, but we pass it explicitly just to be
-    # super obvious.
-    token = os.environ.get("SLACK_BOT_TOKEN")
-    if not token:
-        raise KeyError(f"Missing env var SLACK_BOT_TOKEN. Env: {os.env}")
-    slack_client = slack_sdk.WebClient(token=token)
-
-    # Look up user ID by email.
-    logger.info("Looking up user by email: %s", email_to_notify)
-    lookup_response = slack_client.users_lookupByEmail(email=email_to_notify)
-    user_id = lookup_response["user"]["id"]
-    logger.info("Found user ID: %s", user_id)
-
-    # Send the message.
-    message = "Hello, world!"
-    slack_client.chat_postMessage(channel=user_id, text=message)
-    logger.info("Sent message to user '%s': '''%s'''", user_id, message)
+    user_id = slack_client.get_user_id_by_email(user_email)
+    slack_client.send_message(user_id, "Hello, world!")
 
 
 def main():
@@ -227,8 +265,8 @@ def main():
             CONFIG_TAB_NAME,
         )
     # TODO: Identify late castings.
-    if not args.dry_run:
-        send_hello_world_via_slack("gredelston@gmail.com")
+    slack_client = SlackClient(dry_run=args.dry_run)
+    send_hello_world_via_slack(slack_client, "gredelston@gmail.com")
     # TODO: Send Slack messages.
 
     logger.info("Job completed successfully.")
