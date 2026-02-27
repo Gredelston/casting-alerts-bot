@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # Hardcoded spreadsheet info.
 SPREADSHEET_ID = "1sOcW4siUOLxd5Mt6WeOQ9vk05LZXDA6rHXulHcdQP4A"
 CASTING_TAB_NAME = "Casting Info"
-CONFIG_TAB_NAME = "AlertsConfig"
+CONFIG_TAB_NAME = "AlertConfigs"
 
 
 class ShowLocation(enum.StrEnum):
@@ -53,6 +53,25 @@ class Show:
 
 class ShowParsingError(ValueError):
     """Raised when we fail to parse show data from the casting spreadsheet."""
+
+
+class Role(enum.StrEnum):
+    """Different roles need to be cast for each show."""
+
+    TEAMS = "Teams"
+    HOST = "Host"
+    STAGE_MANAGER = "Stage Manager"
+    GREETER = "Greeter"
+
+
+@dataclasses.dataclass
+class CastingExpectation:
+    """An expectation of who should cast which role, and by when."""
+
+    role: Role
+    locations: list[ShowLocation]
+    responsible_party: str
+    deadline: str
 
 
 class SlackClient:
@@ -264,6 +283,49 @@ def parse_shows(casting_data: list[list[str]]) -> list[Show]:
     return shows
 
 
+def fetch_casting_expectations(
+    sheets_service: discovery.Resource,
+) -> list[CastingExpectation]:
+    """Parse the CastingExpectations from the AlertConfigs spreadsheet."""
+    rows = fetch_sheet_values(
+        sheets_service,
+        SPREADSHEET_ID,
+        CONFIG_TAB_NAME,
+    )
+    if rows:
+        logging.info(
+            "Successfully fetched %d rows from '%s'.",
+            len(rows),
+            CONFIG_TAB_NAME,
+        )
+    else:
+        raise ValueError(f"No data found in spreadsheet tab '{CONFIG_TAB_NAME}'")
+    header_row = rows[0]
+    role_column = header_row.index("Role")
+    locations_column = header_row.index("Location(s)")
+    responsibly_party_column = header_row.index("Who's responsible?")
+    deadline_column = header_row.index("Deadline")
+    casting_expectations: list[CastingExpectation] = []
+    locations_dict = {
+        "All Shows": [ShowLocation.LOUISVILLE_UNDERGROUND, ShowLocation.THE_END],
+        "Improvarama Only": [ShowLocation.LOUISVILLE_UNDERGROUND],
+        "Laughayette Only": [ShowLocation.THE_END],
+    }
+    for row in rows[1:]:
+        casting_expectations.append(
+            CastingExpectation(
+                role=Role(row[role_column]),
+                locations=locations_dict[row[locations_column]],
+                responsible_party=row[responsibly_party_column],
+                deadline=row[deadline_column],
+            )
+        )
+    logger.info("Parsed %d casting expectations.", len(casting_expectations))
+    if not casting_expectations:
+        raise ValueError("Alerting configs not defined")
+    return casting_expectations
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Improv Boulder Production Alerts")
     parser.add_argument(
@@ -318,22 +380,9 @@ def main():
     else:
         raise ShowParsingError("No upcoming shows found.")
 
-    config_data = fetch_sheet_values(
-        sheets_service,
-        SPREADSHEET_ID,
-        CONFIG_TAB_NAME,
-    )
-    if config_data:
-        logging.info(
-            "Successfully fetched %d rows from '%s'.",
-            len(config_data),
-            CONFIG_TAB_NAME,
-        )
-    else:
-        logger.warning(
-            "No data found in '%s' (or tab does not exist).",
-            CONFIG_TAB_NAME,
-        )
+    casting_expectations = fetch_casting_expectations(sheets_service)
+    logger.info("%s", casting_expectations)
+
     # TODO: Identify late castings.
     slack_client = SlackClient(dry_run=args.dry_run)
     slack_client.post_message("Greg Edelston", "Hello, world!")
