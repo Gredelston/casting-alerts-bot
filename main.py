@@ -65,7 +65,7 @@ class Role(enum.StrEnum):
 
 
 @dataclasses.dataclass
-class CastingExpectation:
+class CastingRule:
     """An expectation of who should cast which role, and by when."""
 
     role: Role
@@ -350,10 +350,10 @@ def parse_timedelta(input_string: str) -> datetime.timedelta:
             )
 
 
-def fetch_casting_expectations(
+def fetch_casting_rules(
     sheets_service: discovery.Resource,
-) -> list[CastingExpectation]:
-    """Parse the CastingExpectations from the AlertConfigs spreadsheet."""
+) -> list[CastingRule]:
+    """Parse the casting rules from the AlertConfigs spreadsheet."""
     rows = fetch_sheet_values(
         sheets_service,
         SPREADSHEET_ID,
@@ -372,40 +372,40 @@ def fetch_casting_expectations(
     venues_column = header_row.index("Venue(s)")
     responsibly_party_column = header_row.index("Who's responsible?")
     deadline_column = header_row.index("Deadline")
-    casting_expectations: list[CastingExpectation] = []
+    casting_rules: list[CastingRule] = []
     venues_dict = {
         "All Shows": [Venue.LOUISVILLE_UNDERGROUND, Venue.THE_END],
         "Improvarama Only": [Venue.LOUISVILLE_UNDERGROUND],
         "Laughayette Only": [Venue.THE_END],
     }
     for row in rows[1:]:
-        casting_expectations.append(
-            CastingExpectation(
+        casting_rules.append(
+            CastingRule(
                 role=Role(row[role_column]),
                 venues=venues_dict[row[venues_column]],
                 responsible_party=row[responsibly_party_column],
                 deadline=parse_timedelta(row[deadline_column]),
             )
         )
-    logger.info("Parsed %d casting expectations.", len(casting_expectations))
-    if not casting_expectations:
+    logger.info("Parsed %d casting rules.", len(casting_rules))
+    if not casting_rules:
         raise ValueError("Alerting configs not defined")
-    return casting_expectations
+    return casting_rules
 
 
 def find_missed_deadlines(
-    upcoming_shows: list[Show], casting_expectations: list[CastingExpectation]
+    upcoming_shows: list[Show], casting_rules: list[CastingRule]
 ) -> list[MissedDeadline]:
     missed_deadlines: list[MissedDeadline] = []
     for show in upcoming_shows:
-        for expectation in casting_expectations:
-            if show.venue not in expectation.venues:
+        for rule in casting_rules:
+            if show.venue not in rule.venues:
                 continue
-            deadline = show.date - expectation.deadline
+            deadline = show.date - rule.deadline
             if deadline > datetime.date.today():
                 continue
             is_met: bool
-            match expectation.role:
+            match rule.role:
                 case Role.TEAMS:
                     is_met = len(show.teams) >= 3
                 case Role.HOST:
@@ -418,8 +418,8 @@ def find_missed_deadlines(
                 missed_deadlines.append(
                     MissedDeadline(
                         show=show,
-                        role=expectation.role,
-                        responsible_party=expectation.responsible_party,
+                        role=rule.role,
+                        responsible_party=rule.responsible_party,
                         deadline=deadline,
                     )
                 )
@@ -449,12 +449,12 @@ def main():
 
     sheets_service = connect_to_sheets_service()
     upcoming_shows = fetch_upcoming_shows(sheets_service)
-    casting_expectations = fetch_casting_expectations(sheets_service)
+    casting_rules = fetch_casting_rules(sheets_service)
 
     slack_client = SlackClient(dry_run=args.dry_run)
     slack_client.post_message("Greg Edelston", "Hello, world!")
 
-    missed_deadlines = find_missed_deadlines(upcoming_shows, casting_expectations)
+    missed_deadlines = find_missed_deadlines(upcoming_shows, casting_rules)
     for m in missed_deadlines:
         print(m)
     # TODO: Identify late castings.
