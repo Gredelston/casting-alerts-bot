@@ -204,7 +204,7 @@ class SlackClient:
 
 
 @dataclasses.dataclass
-class MissedDeadline:
+class CastingAlert:
     """Instance of a role that should have been cast, but has not."""
 
     show: Show
@@ -393,10 +393,10 @@ def fetch_casting_rules(
     return casting_rules
 
 
-def find_missed_deadlines(
+def find_triggered_alerts(
     upcoming_shows: list[Show], casting_rules: list[CastingRule]
-) -> list[MissedDeadline]:
-    missed_deadlines: list[MissedDeadline] = []
+) -> list[CastingAlert]:
+    alerts: list[CastingAlert] = []
     for show in upcoming_shows:
         for rule in casting_rules:
             if show.venue not in rule.venues:
@@ -415,15 +415,15 @@ def find_missed_deadlines(
                 case Role.GREETER:
                     is_met = bool(show.greeter.strip())
             if not is_met:
-                missed_deadlines.append(
-                    MissedDeadline(
+                alerts.append(
+                    CastingAlert(
                         show=show,
                         role=rule.role,
                         responsible_party=rule.responsible_party,
                         deadline=deadline,
                     )
                 )
-    return missed_deadlines
+    return alerts
 
 
 def parse_args() -> argparse.Namespace:
@@ -454,9 +454,9 @@ def main():
     slack_client = SlackClient(dry_run=args.dry_run)
     slack_client.post_message("Greg Edelston", "Hello, world!")
 
-    missed_deadlines = find_missed_deadlines(upcoming_shows, casting_rules)
-    for m in missed_deadlines:
-        print(m)
+    alerts = find_triggered_alerts(upcoming_shows, casting_rules)
+    for alert in alerts:
+        print(alert)
     # TODO: Identify late castings.
     # TODO: Send Slack messages.
 
