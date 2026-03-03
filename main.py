@@ -259,30 +259,30 @@ def read_sheet_rows(
 
 def parse_shows(casting_data: list[list[str]]) -> list[Show]:
     header_row = casting_data[0]
-    date_column = header_row.index("Date")
-    cancelled_column = header_row.index("Cancelled?")
-    venue_column = header_row.index("Venue")
-    host_column = header_row.index("Host")
-    stage_manager_column = header_row.index("Stage Manager")
-    greeter_column = header_row.index("Greeter")
-    teams_column = header_row.index("Team Order")
+    date_col_idx = header_row.index("Date")
+    cancelled_col_idx = header_row.index("Cancelled?")
+    venue_col_idx = header_row.index("Venue")
+    host_col_idx = header_row.index("Host")
+    stage_manager_col_idx = header_row.index("Stage Manager")
+    greeter_col_idx = header_row.index("Greeter")
+    teams_col_idx = header_row.index("Team Order")
     shows: list[Show] = []
     for row in casting_data[1:]:
-        if not row[date_column]:
+        if not row[date_col_idx]:
             continue
         while len(row) < len(header_row):
             row.append("")
-        date = datetime.date.fromisoformat(row[date_column])
+        date = datetime.date.fromisoformat(row[date_col_idx])
         try:
             shows.append(
                 Show(
-                    date=datetime.date.fromisoformat(row[date_column]),
-                    cancelled=row[cancelled_column] == "TRUE",
-                    venue=Venue(row[venue_column]),
-                    host=row[host_column],
-                    stage_manager=row[stage_manager_column],
-                    greeter=row[greeter_column],
-                    teams=row[teams_column].split("\n"),
+                    date=datetime.date.fromisoformat(row[date_col_idx]),
+                    cancelled=row[cancelled_col_idx] == "TRUE",
+                    venue=Venue(row[venue_col_idx]),
+                    host=row[host_col_idx],
+                    stage_manager=row[stage_manager_col_idx],
+                    greeter=row[greeter_col_idx],
+                    teams=row[teams_col_idx].split("\n"),
                 )
             )
         except Exception as e:
@@ -368,12 +368,12 @@ def fetch_casting_rules(
     else:
         raise ValueError(f"No data found in spreadsheet tab '{CONFIG_TAB_NAME}'")
     header_row = rows[0]
-    role_column = header_row.index("Role")
-    venues_column = header_row.index("Venue(s)")
-    responsibly_party_column = header_row.index("Who's responsible?")
-    deadline_column = header_row.index("Deadline")
+    role_col_idx = header_row.index("Role")
+    venues_col_idx = header_row.index("Venue(s)")
+    responsible_party_col_idx = header_row.index("Who's responsible?")
+    deadline_col_idx = header_row.index("Deadline")
     casting_rules: list[CastingRule] = []
-    venues_dict = {
+    venue_map = {
         "All Shows": [Venue.LOUISVILLE_UNDERGROUND, Venue.THE_END],
         "Improvarama Only": [Venue.LOUISVILLE_UNDERGROUND],
         "Laughayette Only": [Venue.THE_END],
@@ -381,10 +381,10 @@ def fetch_casting_rules(
     for row in rows[1:]:
         casting_rules.append(
             CastingRule(
-                role=Role(row[role_column]),
-                venues=venues_dict[row[venues_column]],
-                responsible_party=row[responsibly_party_column],
-                deadline=parse_duration_string(row[deadline_column]),
+                role=Role(row[role_col_idx]),
+                venues=venue_map[row[venues_col_idx]],
+                responsible_party=row[responsible_party_col_idx],
+                deadline=parse_duration_string(row[deadline_col_idx]),
             )
         )
     logger.info("Parsed %d casting rules.", len(casting_rules))
