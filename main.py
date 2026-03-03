@@ -213,7 +213,7 @@ class CastingAlert:
     deadline: datetime.datetime
 
 
-def connect_to_sheets_service() -> discovery.Resource:
+def get_sheets_client() -> discovery.Resource:
     """Authenticate with Google using Application Default Credentials."""
     logger.info("Connecting to Google Sheets service...")
     scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
@@ -234,7 +234,7 @@ def connect_to_sheets_service() -> discovery.Resource:
     )
 
 
-def fetch_sheet_values(
+def read_sheet_rows(
     sheets_service: discovery.Resource,
     spreadsheet_id: str,
     range_name: str,
@@ -297,7 +297,7 @@ def fetch_upcoming_shows(
     sheets_service: discovery.Resource,
 ) -> list[Show]:
     """Parse the upcoming shows from the Performance Casting spreadsheet."""
-    casting_data = fetch_sheet_values(
+    casting_data = read_sheet_rows(
         sheets_service,
         SPREADSHEET_ID,
         CASTING_TAB_NAME,
@@ -328,7 +328,7 @@ def fetch_upcoming_shows(
     return upcoming_shows
 
 
-def parse_timedelta(input_string: str) -> datetime.timedelta:
+def parse_duration_string(input_string: str) -> datetime.timedelta:
     """Parse a string like '1 month' or '2 weeks' into a datetime.timedelta."""
     m = re.fullmatch(r"(\d+)\s*([A-Za-z]+)", input_string.strip())
     if not m:
@@ -354,7 +354,7 @@ def fetch_casting_rules(
     sheets_service: discovery.Resource,
 ) -> list[CastingRule]:
     """Parse the casting rules from the AlertConfigs spreadsheet."""
-    rows = fetch_sheet_values(
+    rows = read_sheet_rows(
         sheets_service,
         SPREADSHEET_ID,
         CONFIG_TAB_NAME,
@@ -384,7 +384,7 @@ def fetch_casting_rules(
                 role=Role(row[role_column]),
                 venues=venues_dict[row[venues_column]],
                 responsible_party=row[responsibly_party_column],
-                deadline=parse_timedelta(row[deadline_column]),
+                deadline=parse_duration_string(row[deadline_column]),
             )
         )
     logger.info("Parsed %d casting rules.", len(casting_rules))
@@ -393,7 +393,7 @@ def fetch_casting_rules(
     return casting_rules
 
 
-def find_triggered_alerts(
+def find_unfilled_roles(
     upcoming_shows: list[Show], casting_rules: list[CastingRule]
 ) -> list[CastingAlert]:
     alerts: list[CastingAlert] = []
@@ -447,14 +447,14 @@ def main():
     if args.debug:
         logger.setLevel(logging.DEBUG)
 
-    sheets_service = connect_to_sheets_service()
+    sheets_service = get_sheets_client()
     upcoming_shows = fetch_upcoming_shows(sheets_service)
     casting_rules = fetch_casting_rules(sheets_service)
 
     slack_client = SlackClient(dry_run=args.dry_run)
     slack_client.post_message("Greg Edelston", "Hello, world!")
 
-    alerts = find_triggered_alerts(upcoming_shows, casting_rules)
+    alerts = find_unfilled_roles(upcoming_shows, casting_rules)
     for alert in alerts:
         print(alert)
     # TODO: Identify late castings.
