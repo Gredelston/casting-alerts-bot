@@ -62,7 +62,6 @@ def main():
     casting_rules = spreadsheet.fetch_casting_rules(sheets_client)
 
     slack_client = slack.SlackClient(dry_run=args.dry_run)
-    slack_client.post_message("Greg Edelston", "Hello, world!")
 
     alerts = logic.find_unfilled_roles(upcoming_shows, casting_rules)
     logic.dispatch_alerts(alerts, slack_client)
