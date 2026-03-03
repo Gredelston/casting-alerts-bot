@@ -20,7 +20,7 @@ import models
 
 SPREADSHEET_ID = "1sOcW4siUOLxd5Mt6WeOQ9vk05LZXDA6rHXulHcdQP4A"
 CASTING_TAB_NAME = "Casting Info"
-CONFIG_TAB_NAME = "AlertConfigs"
+CONFIG_TAB_NAME = "Alert Configs"
 
 logger = logging.getLogger(__name__)
 

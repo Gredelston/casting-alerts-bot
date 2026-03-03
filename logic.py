@@ -12,6 +12,9 @@ import datetime
 import logging
 
 import models
+import slack
+
+logger = logging.getLogger(__name__)
 
 
 def find_unfilled_roles(
@@ -58,3 +61,22 @@ def find_unfilled_roles(
                     )
                 )
     return alerts
+
+
+def dispatch_alerts(
+    alerts: list[models.CastingAlert],
+    slack_client: slack.SlackClient,
+) -> None:
+    """Send all generated casting alerts to their responsible parties via Slack.
+
+    Args:
+        alerts: A list of CastingAlert objects representing missed deadlines.
+        slack_client: An initialized SlackClient to handle message dispatching.
+    """
+    logger.info(f"Dispatching {len(alerts)} casting alerts...")
+    for alert in alerts:
+        # post_message automatically handles routing "#channels" vs "Real Names"
+        slack_client.post_message(
+            conversation_id=alert.responsible_party, message=alert.message
+        )
+    logger.info("Finished dispatching alerts.")
