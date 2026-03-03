@@ -203,6 +203,16 @@ class SlackClient:
         logger.info(f"Sent message to {conversation_id}: '''{message}'''")
 
 
+@dataclasses.dataclass
+class MissedDeadline:
+    """Instance of a role that should have been cast, but has not."""
+
+    show: Show
+    role: Role
+    responsible_party: str
+    deadline: datetime.datetime
+
+
 def connect_to_sheets_service() -> discovery.Resource:
     """Authenticate with Google using Application Default Credentials."""
     logger.info("Connecting to Google Sheets service...")
@@ -318,6 +328,28 @@ def fetch_upcoming_shows(
     return upcoming_shows
 
 
+def parse_timedelta(input_string: str) -> datetime.timedelta:
+    """Parse a string like '1 month' or '2 weeks' into a datetime.timedelta."""
+    m = re.fullmatch(r"(\d+)\s*([A-Za-z]+)", input_string.strip())
+    if not m:
+        raise ValueError(f"Could not parse deadline string: {input_string}")
+    amount = int(m.group(1))
+    unit = m.group(2)
+    match unit.lower():
+        case "day" | "days":
+            return datetime.timedelta(days=amount)
+        case "week" | "weeks":
+            return datetime.timedelta(weeks=amount)
+        case "month" | "months":
+            # Months have an inconsistent length, so timedelta doesn't support them.
+            # Let's just approximate at 30 days.
+            return datetime.timedelta(days=30 * amount)
+        case _:
+            raise ValueError(
+                f"Unrecognized unit '{unit}' in deadline string '{input_string}'."
+            )
+
+
 def fetch_casting_expectations(
     sheets_service: discovery.Resource,
 ) -> list[CastingExpectation]:
@@ -352,13 +384,46 @@ def fetch_casting_expectations(
                 role=Role(row[role_column]),
                 locations=locations_dict[row[locations_column]],
                 responsible_party=row[responsibly_party_column],
-                deadline=row[deadline_column],
+                deadline=parse_timedelta(row[deadline_column]),
             )
         )
     logger.info("Parsed %d casting expectations.", len(casting_expectations))
     if not casting_expectations:
         raise ValueError("Alerting configs not defined")
     return casting_expectations
+
+
+def find_missed_deadlines(
+    upcoming_shows: list[Show], casting_expectations: list[CastingExpectation]
+) -> list[MissedDeadline]:
+    missed_deadlines: list[MissedDeadline] = []
+    for show in upcoming_shows:
+        for expectation in casting_expectations:
+            if show.location not in expectation.locations:
+                continue
+            deadline = show.date - expectation.deadline
+            if deadline > datetime.date.today():
+                continue
+            is_met: bool
+            match expectation.role:
+                case Role.TEAMS:
+                    is_met = len(show.teams) >= 3
+                case Role.HOST:
+                    is_met = bool(show.host.strip())
+                case Role.STAGE_MANAGER:
+                    is_met = bool(show.stage_manager.strip())
+                case Role.GREETER:
+                    is_met = bool(show.greeter.strip())
+            if not is_met:
+                missed_deadlines.append(
+                    MissedDeadline(
+                        show=show,
+                        role=expectation.role,
+                        responsible_party=expectation.responsible_party,
+                        deadline=deadline,
+                    )
+                )
+    return missed_deadlines
 
 
 def parse_args() -> argparse.Namespace:
@@ -384,13 +449,15 @@ def main():
 
     sheets_service = connect_to_sheets_service()
     upcoming_shows = fetch_upcoming_shows(sheets_service)
-
     casting_expectations = fetch_casting_expectations(sheets_service)
-    logger.info("%s", casting_expectations)
 
-    # TODO: Identify late castings.
     slack_client = SlackClient(dry_run=args.dry_run)
     slack_client.post_message("Greg Edelston", "Hello, world!")
+
+    missed_deadlines = find_missed_deadlines(upcoming_shows, casting_expectations)
+    for m in missed_deadlines:
+        print(m)
+    # TODO: Identify late castings.
     # TODO: Send Slack messages.
 
     logger.info("Job completed successfully.")
