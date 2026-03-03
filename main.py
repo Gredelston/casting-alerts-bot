@@ -66,7 +66,7 @@ def main():
 
     alerts = logic.find_unfilled_roles(upcoming_shows, casting_rules)
     for alert in alerts:
-        print(alert)
+        print(alert.message)
     # TODO: Send Slack messages.
 
     logger.info("Job completed successfully.")

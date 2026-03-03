@@ -103,3 +103,20 @@ class CastingAlert:
     role: Role
     responsible_party: str
     deadline: datetime.datetime
+
+    @property
+    def message(self) -> str:
+        """Write a friendly message to send the responsible party via Slack."""
+        formatted_date = self.show.date.strftime("%B %d, %Y")
+        formatted_deadline = self.deadline.strftime("%B %d, %Y")
+
+        # Fix the grammar for plural roles (Teams) vs singular roles (Host, etc)
+        article = "" if self.role == Role.TEAMS else "a "
+
+        return (
+            f"Hey there! 👋 Just a quick heads-up that we're still missing {article}"
+            f"*{self.role.value}* for the upcoming show on *{formatted_date}* "
+            f"at *{self.show.venue.value}*. The ideal deadline for this was "
+            f"*{formatted_deadline}*, so please update the casting sheet once "
+            f"you get this sorted. Thanks! 💖"
+        )
