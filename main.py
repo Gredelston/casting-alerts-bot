@@ -30,7 +30,7 @@ CASTING_TAB_NAME = "Casting Info"
 CONFIG_TAB_NAME = "AlertConfigs"
 
 
-class ShowLocation(enum.StrEnum):
+class Venue(enum.StrEnum):
     LOUISVILLE_UNDERGROUND = "Louisville Underground"
     FULL_CYCLE = "Full Cycle"
     THE_END = "The End"
@@ -40,7 +40,7 @@ class ShowLocation(enum.StrEnum):
 class Show:
     date: datetime.date
     cancelled: bool
-    location: ShowLocation
+    venue: Venue
     host: str
     stage_manager: str
     greeter: str
@@ -69,7 +69,7 @@ class CastingExpectation:
     """An expectation of who should cast which role, and by when."""
 
     role: Role
-    locations: list[ShowLocation]
+    venues: list[Venue]
     responsible_party: str
     deadline: str
 
@@ -261,7 +261,7 @@ def parse_shows(casting_data: list[list[str]]) -> list[Show]:
     header_row = casting_data[0]
     date_column = header_row.index("Date")
     cancelled_column = header_row.index("Cancelled?")
-    location_column = header_row.index("Location")
+    venue_column = header_row.index("Venue")
     host_column = header_row.index("Host")
     stage_manager_column = header_row.index("Stage Manager")
     greeter_column = header_row.index("Greeter")
@@ -278,7 +278,7 @@ def parse_shows(casting_data: list[list[str]]) -> list[Show]:
                 Show(
                     date=datetime.date.fromisoformat(row[date_column]),
                     cancelled=row[cancelled_column] == "TRUE",
-                    location=ShowLocation(row[location_column]),
+                    venue=Venue(row[venue_column]),
                     host=row[host_column],
                     stage_manager=row[stage_manager_column],
                     greeter=row[greeter_column],
@@ -369,20 +369,20 @@ def fetch_casting_expectations(
         raise ValueError(f"No data found in spreadsheet tab '{CONFIG_TAB_NAME}'")
     header_row = rows[0]
     role_column = header_row.index("Role")
-    locations_column = header_row.index("Location(s)")
+    venues_column = header_row.index("Venue(s)")
     responsibly_party_column = header_row.index("Who's responsible?")
     deadline_column = header_row.index("Deadline")
     casting_expectations: list[CastingExpectation] = []
-    locations_dict = {
-        "All Shows": [ShowLocation.LOUISVILLE_UNDERGROUND, ShowLocation.THE_END],
-        "Improvarama Only": [ShowLocation.LOUISVILLE_UNDERGROUND],
-        "Laughayette Only": [ShowLocation.THE_END],
+    venues_dict = {
+        "All Shows": [Venue.LOUISVILLE_UNDERGROUND, Venue.THE_END],
+        "Improvarama Only": [Venue.LOUISVILLE_UNDERGROUND],
+        "Laughayette Only": [Venue.THE_END],
     }
     for row in rows[1:]:
         casting_expectations.append(
             CastingExpectation(
                 role=Role(row[role_column]),
-                locations=locations_dict[row[locations_column]],
+                venues=venues_dict[row[venues_column]],
                 responsible_party=row[responsibly_party_column],
                 deadline=parse_timedelta(row[deadline_column]),
             )
@@ -399,7 +399,7 @@ def find_missed_deadlines(
     missed_deadlines: list[MissedDeadline] = []
     for show in upcoming_shows:
         for expectation in casting_expectations:
-            if show.location not in expectation.locations:
+            if show.venue not in expectation.venues:
                 continue
             deadline = show.date - expectation.deadline
             if deadline > datetime.date.today():
