@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+
+"""
+Core data structures and domain models for the Casting Alerts Bot.
+
+This module defines the classes, enums, and exceptions used to represent 
+the fundamental concepts of the application, including improv shows, venues, 
+casting rules, and triggered alerts. It is designed to be free of external 
+API dependencies.
+"""
+
+import dataclasses
+import datetime
+import enum
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class Venue(enum.StrEnum):
+    """Venues where improv shows are performed."""
+
+    LOUISVILLE_UNDERGROUND = "Louisville Underground"
+    FULL_CYCLE = "Full Cycle"
+    THE_END = "The End"
+
+
+@dataclasses.dataclass
+class Show:
+    """Represents a scheduled improv show and its casting details.
+
+    Attributes:
+        date: The scheduled date of the show.
+        cancelled: Whether the show has been officially cancelled.
+        venue: The venue where the show will take place.
+        host: The assigned host for the show.
+        stage_manager: The assigned stage manager.
+        greeter: The assigned greeter/door person.
+        teams: A list of improv teams scheduled to perform.
+    """
+
+    date: datetime.date
+    cancelled: bool
+    venue: Venue
+    host: str
+    stage_manager: str
+    greeter: str
+    teams: list[str]
+
+    def is_past(self) -> bool:
+        """Check whether a show occurred in the past.
+
+        Returns:
+            True if the show's date is strictly before today, False otherwise.
+        """
+        return self.date < datetime.date.today()
+
+
+class Role(enum.StrEnum):
+    """Different roles need to be cast for each show."""
+
+    TEAMS = "Teams"
+    HOST = "Host"
+    STAGE_MANAGER = "Stage Manager"
+    GREETER = "Greeter"
+
+
+@dataclasses.dataclass
+class CastingRule:
+    """An expectation of who should cast which role, and by when.
+
+    Attributes:
+        role: The specific casting role this rule applies to.
+        venues: A list of venues where this rule is applicable.
+        responsible_party: The name of the person or group responsible for
+            ensuring the role is cast.
+        deadline: The time duration before the show date by which the role
+            must be cast.
+    """
+
+    role: Role
+    venues: list[Venue]
+    responsible_party: str
+    deadline: str
+
+
+class ShowParsingError(ValueError):
+    """Raised when show data cannot be parsed from the casting spreadsheet."""
+
+
+@dataclasses.dataclass
+class CastingAlert:
+    """Instance of a role that should have been cast by a deadline, but has not.
+
+    Attributes:
+        show: The specific show that is missing a casted role.
+        role: The role that remains unfilled.
+        responsible_party: The person or group responsible for casting the role.
+        deadline: The date by which the role was supposed to be cast.
+    """
+
+    show: Show
+    role: Role
+    responsible_party: str
+    deadline: datetime.datetime
