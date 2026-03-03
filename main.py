@@ -283,6 +283,41 @@ def parse_shows(casting_data: list[list[str]]) -> list[Show]:
     return shows
 
 
+def fetch_upcoming_shows(
+    sheets_service: discovery.Resource,
+) -> list[Show]:
+    """Parse the upcoming shows from the Performance Casting spreadsheet."""
+    casting_data = fetch_sheet_values(
+        sheets_service,
+        SPREADSHEET_ID,
+        CASTING_TAB_NAME,
+    )
+    if not casting_data:
+        logger.warning(
+            "No data found in '%s' (or tab does not exist).",
+            CASTING_TAB_NAME,
+        )
+        return []
+    logging.info(
+        "Fetched %d rows from '%s'.",
+        len(casting_data),
+        CASTING_TAB_NAME,
+    )
+
+    shows = parse_shows(casting_data)
+    if not shows:
+        raise ShowParsingError(
+            f"Failed to parse any shows from raw data: {casting_data}."
+        )
+    logger.info("Parsed %d shows.", len(shows))
+
+    upcoming_shows = [show for show in shows if not show.is_past()]
+    if not upcoming_shows:
+        raise ShowParsingError(f"No upcoming shows found. All shows: {shows}")
+    logger.info("Found %d upcoming shows.", len(upcoming_shows))
+    return upcoming_shows
+
+
 def fetch_casting_expectations(
     sheets_service: discovery.Resource,
 ) -> list[CastingExpectation]:
@@ -348,37 +383,7 @@ def main():
         logger.setLevel(logging.DEBUG)
 
     sheets_service = connect_to_sheets_service()
-
-    casting_data = fetch_sheet_values(
-        sheets_service,
-        SPREADSHEET_ID,
-        CASTING_TAB_NAME,
-    )
-    if casting_data:
-        logging.info(
-            "Successfully fetched %d rows from '%s'.",
-            len(casting_data),
-            CASTING_TAB_NAME,
-        )
-    else:
-        logger.warning(
-            "No data found in '%s' (or tab does not exist).",
-            CASTING_TAB_NAME,
-        )
-
-    shows = parse_shows(casting_data)
-    if shows:
-        logger.info("Successfully parsed %d shows.", len(shows))
-    else:
-        raise ShowParsingError("Failed to parse any shows.")
-
-    upcoming_shows = [show for show in shows if not show.is_past()]
-    if upcoming_shows:
-        logger.info("Upcoming shows: %d", len(upcoming_shows))
-        for i, show in enumerate(upcoming_shows):
-            logger.info("%d.\t%s", i + 1, show)
-    else:
-        raise ShowParsingError("No upcoming shows found.")
+    upcoming_shows = fetch_upcoming_shows(sheets_service)
 
     casting_expectations = fetch_casting_expectations(sheets_service)
     logger.info("%s", casting_expectations)
