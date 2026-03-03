@@ -31,6 +31,8 @@ CONFIG_TAB_NAME = "AlertConfigs"
 
 
 class Venue(enum.StrEnum):
+    """Venues where improv shows are performed."""
+
     LOUISVILLE_UNDERGROUND = "Louisville Underground"
     FULL_CYCLE = "Full Cycle"
     THE_END = "The End"
@@ -38,6 +40,18 @@ class Venue(enum.StrEnum):
 
 @dataclasses.dataclass
 class Show:
+    """Represents a scheduled improv show and its casting details.
+
+    Attributes:
+        date: The scheduled date of the show.
+        cancelled: Whether the show has been officially cancelled.
+        venue: The venue where the show will take place.
+        host: The assigned host for the show.
+        stage_manager: The assigned stage manager.
+        greeter: The assigned greeter/door person.
+        teams: A list of improv teams scheduled to perform.
+    """
+
     date: datetime.date
     cancelled: bool
     venue: Venue
@@ -47,12 +61,16 @@ class Show:
     teams: list[str]
 
     def is_past(self) -> bool:
-        """Check whether a show occurred in the past."""
+        """Check whether a show occurred in the past.
+
+        Returns:
+            True if the show's date is strictly before today, False otherwise.
+        """
         return self.date < datetime.date.today()
 
 
 class ShowParsingError(ValueError):
-    """Raised when we fail to parse show data from the casting spreadsheet."""
+    """Raised when show data cannot be parsed from the casting spreadsheet."""
 
 
 class Role(enum.StrEnum):
@@ -66,7 +84,16 @@ class Role(enum.StrEnum):
 
 @dataclasses.dataclass
 class CastingRule:
-    """An expectation of who should cast which role, and by when."""
+    """An expectation of who should cast which role, and by when.
+
+    Attributes:
+        role: The specific casting role this rule applies to.
+        venues: A list of venues where this rule is applicable.
+        responsible_party: The name of the person or group responsible for
+            ensuring the role is cast.
+        deadline: The time duration before the show date by which the role
+            must be cast.
+    """
 
     role: Role
     venues: list[Venue]
@@ -75,9 +102,20 @@ class CastingRule:
 
 
 class SlackClient:
-    """A wrapper for slack_sdk.WebClient actions."""
+    """A wrapper for slack_sdk.WebClient actions.
+
+    Provides simplified methods for looking up Slack users and sending messages,
+    while supporting a dry-run mode to prevent actual messages from being sent
+    during testing.
+    """
 
     def __init__(self, dry_run: bool) -> None:
+        """Initialize the SlackClient.
+
+        Args:
+            dry_run: If True, blocks actual external notifications from being
+                sent to Slack.
+        """
         # Initialize the WebClient.
         # Technically the token param is optional, but passing it explicitly
         # makes errors more obvious.
@@ -86,11 +124,15 @@ class SlackClient:
 
     @staticmethod
     def _get_token() -> str:
-        """Fetch the SLACK_BOT_TOKEN from env vars.
+        """Fetch the SLACK_BOT_TOKEN from environment variables.
+
+        Returns:
+            The Slack bot token string.
 
         Raises:
-            KeyError: If the env var is not found.
-            ValueError: If the env var is mistakenly wrapped in quotes.
+            KeyError: If the SLACK_BOT_TOKEN environment variable is not found.
+            ValueError: If the SLACK_BOT_TOKEN environment variable is
+                mistakenly wrapped in quotes.
         """
         token = os.environ.get("SLACK_BOT_TOKEN")
         if not token:
@@ -103,7 +145,12 @@ class SlackClient:
 
     @functools.cached_property
     def _all_users(self) -> list[dict[str, Any]]:
-        """Get a full list of all Slack users."""
+        """Get a full list of all Slack users in the workspace.
+
+        Returns:
+            A list of dictionaries, each representing a single user, fetched
+            from the Slack API.
+        """
         users = []
         cursor = None
         logger.debug("Fetching list of all Slack users...")
@@ -121,10 +168,18 @@ class SlackClient:
     def get_user_id_by_name(self, name: str, allow_none: bool = False) -> str:
         """Look up a user ID by their full name.
 
+        Args:
+            name: The full real name of the Slack user to look up.
+            allow_none: If True, returns an empty string when no user is found
+                instead of raising an exception.
+
         Returns:
-            ValueError: If no user is found with the given name (unless
-                allow_none is passed).
-            ValueError: If multiple users are found with the given name.
+            The Slack user ID matching the given name, or an empty string if
+            allow_none is True and no user is found.
+
+        Raises:
+            ValueError: If no user is found (and allow_none is False), or if
+                multiple users are found with the given name.
         """
         logger.debug("Searching for Slack user with name '%s'...", name)
         user_id = ""
@@ -147,7 +202,14 @@ class SlackClient:
         return ""
 
     def get_user_id_by_email(self, email: str) -> str:
-        """Look up a user ID by their registered email address."""
+        """Look up a user ID by their registered email address.
+
+        Args:
+            email: The registered email address associated with the Slack user.
+
+        Returns:
+            The Slack user ID matching the given email address.
+        """
         logger.debug("Looking up Slack user by email: %s", email)
         response = self._client.users_lookupByEmail(email=email)
         user_id = response["user"]["id"]
@@ -158,12 +220,13 @@ class SlackClient:
         """Send a message to the specified user.
 
         Args:
-            conversation_id: The channel name/ID, user ID, user email, or user's
-                full name to post a message to.
-            message: The exact message to post.
+            conversation_id: The channel name, channel ID, user ID, user email,
+                or user's full name to post a message to.
+            message: The exact text message to post.
 
         Raises:
-            ValueError: If user_id doesn't look like a user ID.
+            ValueError: If the conversation_id cannot be interpreted or resolved
+                to a valid Slack user or channel.
         """
         if re.fullmatch(r"[UW][A-Z0-9]{8,}", conversation_id):
             logger.debug("Conversation ID '%s' looks like a user ID.", conversation_id)
@@ -205,7 +268,14 @@ class SlackClient:
 
 @dataclasses.dataclass
 class CastingAlert:
-    """Instance of a role that should have been cast, but has not."""
+    """Instance of a role that should have been cast by a deadline, but has not.
+
+    Attributes:
+        show: The specific show that is missing a casted role.
+        role: The role that remains unfilled.
+        responsible_party: The person or group responsible for casting the role.
+        deadline: The date by which the role was supposed to be cast.
+    """
 
     show: Show
     role: Role
@@ -214,7 +284,13 @@ class CastingAlert:
 
 
 def get_sheets_client() -> discovery.Resource:
-    """Authenticate with Google using Application Default Credentials."""
+    """Authenticate and build the Google Sheets service client.
+
+    Uses Google Application Default Credentials to authenticate.
+
+    Returns:
+        A Google Sheets API service resource object.
+    """
     logger.info("Connecting to Google Sheets service...")
     scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
@@ -239,7 +315,17 @@ def read_sheet_rows(
     spreadsheet_id: str,
     range_name: str,
 ) -> list[list[str]]:
-    """Retrieve all spreadsheet values from a specific range or tab."""
+    """Retrieve all spreadsheet values from a specific range or tab.
+
+    Args:
+        sheets_service: The authenticated Google Sheets API resource.
+        spreadsheet_id: The ID of the Google Spreadsheet to read from.
+        range_name: The A1 notation of the range or tab name to fetch.
+
+    Returns:
+        A list of lists, where each inner list represents a row of string
+        values from the spreadsheet.
+    """
     logger.debug(
         "Attempting to fetch range %s from spreadsheet %s",
         range_name,
@@ -258,6 +344,18 @@ def read_sheet_rows(
 
 
 def parse_shows(casting_data: list[list[str]]) -> list[Show]:
+    """Parse raw spreadsheet rows into Show objects.
+
+    Args:
+        casting_data: A list of rows (lists of strings) retrieved from the
+            casting spreadsheet. The first row must be the header.
+
+    Returns:
+        A list of Show objects parsed from the raw data.
+
+    Raises:
+        ShowParsingError: If there is an issue parsing a future show's data.
+    """
     header_row = casting_data[0]
     date_col_idx = header_row.index("Date")
     cancelled_col_idx = header_row.index("Cancelled?")
@@ -296,7 +394,19 @@ def parse_shows(casting_data: list[list[str]]) -> list[Show]:
 def fetch_upcoming_shows(
     sheets_service: discovery.Resource,
 ) -> list[Show]:
-    """Parse the upcoming shows from the Performance Casting spreadsheet."""
+    """Fetche and parse upcoming shows from the Performance Casting spreadsheet.
+
+    Args:
+        sheets_service: The authenticated Google Sheets API resource.
+
+    Returns:
+        A list of Show objects representing shows occurring today or in the
+        future.
+
+    Raises:
+        ShowParsingError: If no data is found, no shows can be parsed, or if
+            no upcoming shows exist in the parsed data.
+    """
     casting_data = read_sheet_rows(
         sheets_service,
         SPREADSHEET_ID,
@@ -329,7 +439,19 @@ def fetch_upcoming_shows(
 
 
 def parse_duration_string(input_string: str) -> datetime.timedelta:
-    """Parse a string like '1 month' or '2 weeks' into a datetime.timedelta."""
+    """Parse a string like '1 month' or '2 weeks' into a timedelta.
+
+    Args:
+        input_string: The duration string to parse (e.g., '3 days', '1 week').
+
+    Returns:
+        A datetime.timedelta object representing the parsed duration. Months
+        are approximated as 30 days.
+
+    Raises:
+        ValueError: If the string format cannot be parsed or the unit is
+            unrecognized.
+    """
     m = re.fullmatch(r"(\d+)\s*([A-Za-z]+)", input_string.strip())
     if not m:
         raise ValueError(f"Could not parse deadline string: {input_string}")
@@ -353,7 +475,19 @@ def parse_duration_string(input_string: str) -> datetime.timedelta:
 def fetch_casting_rules(
     sheets_service: discovery.Resource,
 ) -> list[CastingRule]:
-    """Parse the casting rules from the AlertConfigs spreadsheet."""
+    """Fetch and parse casting rules from the AlertConfigs spreadsheet.
+
+    Args:
+        sheets_service: The authenticated Google Sheets API resource.
+
+    Returns:
+        A list of CastingRule objects dictating roles, venues, and casting
+        deadlines.
+
+    Raises:
+        ValueError: If no data is found in the configs tab or if alerting
+            configs are not properly defined.
+    """
     rows = read_sheet_rows(
         sheets_service,
         SPREADSHEET_ID,
@@ -396,6 +530,19 @@ def fetch_casting_rules(
 def find_unfilled_roles(
     upcoming_shows: list[Show], casting_rules: list[CastingRule]
 ) -> list[CastingAlert]:
+    """Identify roles that should have been cast but remain unfilled.
+
+    Evaluates upcoming shows against the specified casting rules to determine
+    if any deadlines have been missed for required roles.
+
+    Args:
+        upcoming_shows: A list of future Show objects to evaluate.
+        casting_rules: A list of CastingRule objects detailing casting
+            expectations.
+
+    Returns:
+        A list of CastingAlert objects for each missed casting deadline.
+    """
     alerts: list[CastingAlert] = []
     for show in upcoming_shows:
         for rule in casting_rules:
@@ -427,6 +574,11 @@ def find_unfilled_roles(
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments.
+
+    Returns:
+        An argparse.Namespace object containing the parsed arguments.
+    """
     parser = argparse.ArgumentParser(description="Improv Boulder Production Alerts")
     parser.add_argument(
         "--dry-run",
@@ -440,6 +592,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def main():
+    """Execute the main routine for the Casting Alerts Bot.
+
+    Authenticates with Google Sheets, retrieves show and rule data, identifies
+    unfilled roles based on missed deadlines, and handles notification alerts.
+    """
     args = parse_args()
 
     if args.dry_run:
