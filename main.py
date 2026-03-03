@@ -457,7 +457,6 @@ def main():
     alerts = find_unfilled_roles(upcoming_shows, casting_rules)
     for alert in alerts:
         print(alert)
-    # TODO: Identify late castings.
     # TODO: Send Slack messages.
 
     logger.info("Job completed successfully.")
