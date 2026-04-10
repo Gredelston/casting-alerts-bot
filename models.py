@@ -104,26 +104,48 @@ class CastingAlert:
     responsible_party: str
     deadline: datetime.datetime
 
-    @property
-    def message(self) -> str:
-        """Write a friendly message to send the responsible party via Slack."""
-        formatted_date = self.show.date.strftime("%B %d, %Y")
-        formatted_deadline = self.deadline.strftime("%B %d, %Y")
 
-        # Fix the grammar for plural roles (Teams) vs singular roles (Host, etc)
-        article = "" if self.role == Role.TEAMS else "a "
+def format_alerts(alerts: list[CastingAlert]) -> str:
+    """Write a friendly message to send the responsible party via Slack for one or more alerts."""
+    if not alerts:
+        return ""
 
-        # URL for the Alerts Config tab
-        config_url = "https://docs.google.com/spreadsheets/d/1sOcW4siUOLxd5Mt6WeOQ9vk05LZXDA6rHXulHcdQP4A/edit?gid=1914067327#gid=1914067327"
+    config_url = "https://docs.google.com/spreadsheets/d/1sOcW4siUOLxd5Mt6WeOQ9vk05LZXDA6rHXulHcdQP4A/edit?gid=1914067327#gid=1914067327"
+    footer = (
+        f"\n\n⚙️ _Note: You can configure deadlines and who gets tagged on the "
+        f"<{config_url}|Alerts Config tab> of the performance casting spreadsheet._\n"
+        f"❓ _If you need any help, feel free to reach out to Greg Edelston._\n\n"
+        f"Thanks! 💖"
+    )
+
+    if len(alerts) == 1:
+        alert = alerts[0]
+        formatted_date = alert.show.date.strftime("%B %d, %Y")
+        formatted_deadline = alert.deadline.strftime("%B %d, %Y")
+        article = "" if alert.role == Role.TEAMS else "a "
 
         return (
             f"Hey there! 👋 Just a quick heads-up that we're still missing {article}"
-            f"*{self.role.value}* for the upcoming show on *{formatted_date}* "
-            f"at *{self.show.venue.value}*. The ideal deadline for this was "
+            f"*{alert.role.value}* for the upcoming show on *{formatted_date}* "
+            f"at *{alert.show.venue.value}*. The ideal deadline for this was "
             f"*{formatted_deadline}*, so please update the casting sheet once "
-            f"you get this sorted.\n\n"
-            f"⚙️ _Note: You can configure deadlines and who gets tagged on the "
-            f"<{config_url}|Alerts Config tab> of the performance casting spreadsheet._\n"
-            f"❓ _If you need any help, feel free to reach out to Greg Edelston._\n\n"
-            f"Thanks! 💖"
+            f"you get this sorted." + footer
         )
+
+    message_lines = [
+        "Hey there! 👋 Just a quick heads-up that we're still missing the following roles for upcoming shows:"
+    ]
+
+    for alert in alerts:
+        formatted_date = alert.show.date.strftime("%B %d, %Y")
+        formatted_deadline = alert.deadline.strftime("%B %d, %Y")
+        article = "" if alert.role == Role.TEAMS else "a "
+
+        message_lines.append(
+            f"• {article}*{alert.role.value}* for the show on *{formatted_date}* "
+            f"at *{alert.show.venue.value}* (deadline was *{formatted_deadline}*)"
+        )
+
+    message_lines.append("\nPlease update the casting sheet once you get this sorted.")
+
+    return "\n".join(message_lines) + footer

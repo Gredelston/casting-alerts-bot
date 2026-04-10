@@ -8,6 +8,7 @@ It compares scheduled shows against defined casting expectations and
 deadlines to identify missing roles and generate actionable alerts.
 """
 
+import collections
 import datetime
 import logging
 
@@ -74,9 +75,14 @@ def dispatch_alerts(
         slack_client: An initialized SlackClient to handle message dispatching.
     """
     logger.info(f"Dispatching {len(alerts)} casting alerts...")
+    alerts_by_party = collections.defaultdict(list)
     for alert in alerts:
+        alerts_by_party[alert.responsible_party].append(alert)
+
+    for responsible_party, party_alerts in alerts_by_party.items():
         # post_message automatically handles routing "#channels" vs "Real Names"
         slack_client.post_message(
-            conversation_id=alert.responsible_party, message=alert.message
+            conversation_id=responsible_party,
+            message=models.format_alerts(party_alerts),
         )
     logger.info("Finished dispatching alerts.")
