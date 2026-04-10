@@ -124,12 +124,20 @@ def format_alerts(alerts: list[CastingAlert]) -> str:
         formatted_deadline = alert.deadline.strftime("%B %d, %Y")
         article = "" if alert.role == Role.TEAMS else "a "
 
-        return (
+        msg = (
             f"Hey there! 👋 Just a quick heads-up that we're still missing {article}"
             f"*{alert.role.value}* for the upcoming show on *{formatted_date}* "
             f"at *{alert.show.venue.value}*. The ideal deadline for this was "
-            f"*{formatted_deadline}*, so please update the casting sheet once "
-            f"you get this sorted." + footer
+            f"*{formatted_deadline}*."
+        )
+
+        if alert.role == Role.TEAMS:
+            cast_teams = [t.strip() for t in alert.show.teams if t.strip()]
+            if cast_teams:
+                msg += f" (Currently cast: {', '.join(cast_teams)})"
+
+        return (
+            msg + " Please update the casting sheet once you get this sorted." + footer
         )
 
     message_lines = [
@@ -141,9 +149,15 @@ def format_alerts(alerts: list[CastingAlert]) -> str:
         formatted_deadline = alert.deadline.strftime("%B %d, %Y")
         article = "" if alert.role == Role.TEAMS else "a "
 
+        extra_info = ""
+        if alert.role == Role.TEAMS:
+            cast_teams = [t.strip() for t in alert.show.teams if t.strip()]
+            if cast_teams:
+                extra_info = f" (Currently cast: {', '.join(cast_teams)})"
+
         message_lines.append(
             f"• {article}*{alert.role.value}* for the show on *{formatted_date}* "
-            f"at *{alert.show.venue.value}* (deadline was *{formatted_deadline}*)"
+            f"at *{alert.show.venue.value}* (deadline was *{formatted_deadline}*){extra_info}"
         )
 
     message_lines.append("\nPlease update the casting sheet once you get this sorted.")

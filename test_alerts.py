@@ -67,6 +67,54 @@ class TestAlerts(unittest.TestCase):
         self.assertIn("The End", result)
         self.assertIn("Thanks! 💖", result)
 
+    def test_format_alerts_single_teams(self):
+        show_with_teams = models.Show(
+            date=datetime.date(2026, 5, 1),
+            cancelled=False,
+            venue=models.Venue.LOUISVILLE_UNDERGROUND,
+            host="",
+            stage_manager="",
+            greeter="",
+            teams=["Team Apple", "Team Banana"],
+        )
+        alert = models.CastingAlert(
+            show=show_with_teams,
+            role=models.Role.TEAMS,
+            responsible_party="U123",
+            deadline=datetime.datetime(2026, 4, 15),
+        )
+        result = models.format_alerts([alert])
+        self.assertIn("missing *Teams*", result)
+        self.assertIn("Currently cast: Team Apple, Team Banana", result)
+
+    def test_format_alerts_multiple_teams(self):
+        show_with_teams = models.Show(
+            date=datetime.date(2026, 5, 2),
+            cancelled=False,
+            venue=models.Venue.THE_END,
+            host="",
+            stage_manager="",
+            greeter="",
+            teams=["Team Cherry"],
+        )
+        alert1 = models.CastingAlert(
+            show=self.show1,
+            role=models.Role.HOST,
+            responsible_party="U123",
+            deadline=datetime.datetime(2026, 4, 15),
+        )
+        alert2 = models.CastingAlert(
+            show=show_with_teams,
+            role=models.Role.TEAMS,
+            responsible_party="U123",
+            deadline=datetime.datetime(2026, 4, 16),
+        )
+        result = models.format_alerts([alert1, alert2])
+        self.assertIn(
+            "• *Teams* for the show on *May 02, 2026* at *The End* (deadline was *April 16, 2026*) (Currently cast: Team Cherry)",
+            result,
+        )
+
     def test_dispatch_alerts(self):
         slack_client = MagicMock()
 
