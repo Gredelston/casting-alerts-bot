@@ -1,6 +1,8 @@
 # Casting Alerts Bot
 
-A Python automation for Improv Boulder that monitors casting spreadsheets and alerts show production teams when show roles are unassigned.
+A Python automation for Improv Boulder that monitors casting spreadsheets and alerts show production teams when show roles are unassigned. 
+
+This repository is designed to be easily understandable by AI agents. If you are an AI assistant reading this, refer to the **Context for AI Agents** section for a quick summary of the architecture and project state.
 
 ## 📋 Prerequisites
 
@@ -8,43 +10,48 @@ A Python automation for Improv Boulder that monitors casting spreadsheets and al
 * **Docker** (optional, for containerized execution)
 * **Google Cloud SDK** (`gcloud`) (Required for authentication)
 
+## 🤖 Context for AI Agents
+
+**Domain & Workflow:**
+This application is a scheduled Cloud Run job that evaluates upcoming improv shows against defined casting rules (deadlines for when certain roles like Host, Stage Manager, Greeter, or Teams need to be filled). 
+1. **Data Source:** It reads show schedules and casting rules from a Google Spreadsheet using `google-api-python-client` with Application Default Credentials.
+2. **Logic:** It compares the current date to the show date minus the rule deadline. If a role is missing and the deadline has passed, an alert is generated.
+3. **Dispatch:** It connects to Slack using `slack_sdk` to look up users by name/email or channel ID and dispatches a friendly Slack message. Alerts targeting the same user are combined into a single message.
+4. **Testing:** A full suite of `unittest` tests are available to verify models, logic, spreadsheet parsing, and alert formatting.
+
 ## 🚀 Local Setup
 
-### 1.  Clone the repository
+### 1. Clone the repository
 
 ```bash
 git clone <repository-url>
 cd casting-alerts-bot
 ```
 
-### 2.  Create and activate a virtual environment
+### 2. Create and activate a virtual environment
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows use `.venv\Scripts\activate`
 ```
 
-### 3.  Install dependencies
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-_Dependencies include `google-api-python-client`, `google-auth`, and `slack-sdk`._
+### 4. Google Authentication
 
-### 4.  Google Authentication
-
-The bot interacts with Google Sheets and requires valid credentials. It uses Application Default Credentials (ADC).
-
-To authenticate locally, run:
+The bot interacts with Google Sheets and requires valid credentials. It uses Application Default Credentials (ADC). To authenticate locally, run:
 
 ```bash
 gcloud auth application-default login
 ```
 
-This generates a JSON credential file (usually in `~/.config/gcloud/application_default_credentials.json`) that the script will automatically detect.
+This generates a JSON credential file that the script will automatically detect.
 
-### 5.  Configuration (.env)
+### 5. Configuration (.env)
 
 Create a `.env` file in the root directory. This is referenced by the Docker scripts and `.gitignore`.
 
@@ -52,24 +59,28 @@ Create a `.env` file in the root directory. This is referenced by the Docker scr
 touch .env
 ```
 
+**Required Environment Variables:**
+* `SLACK_BOT_TOKEN`: A valid Slack Bot OAuth token (starts with `xoxb-`). This is required to lookup users and send messages in the Slack workspace.
+
 ## 🛠️ Usage
 
 ### Running with Python
 
-You can run the script directly with Python.
-
 **Standard Run:**
-
 ```bash
 python main.py
 ```
 
 **Dry Run (No alerts sent):**
-
-Useful for testing without triggering external notifications (e.g., Slack).
-
+Useful for testing without triggering external notifications.
 ```bash
 python main.py --dry-run
+```
+
+**Debug Mode:**
+Increases log verbosity.
+```bash
+python main.py --debug
 ```
 
 ### Running with Docker
@@ -79,15 +90,30 @@ A helper script `build-and-run.sh` is provided to build the image and run the co
 ```bash
 ./build-and-run.sh
 ```
-
 _This script automatically mounts your local gcloud credentials and runs in `--dry-run` mode._
+
+## 🧪 Testing
+
+The project uses Python's built-in `unittest` framework. To run all tests across the project:
+
+```bash
+python -m unittest discover -p "test_*.py"
+```
 
 ## 📂 Project Structure
 
-*   `main.py`: The application entry point. Handles argument parsing, Google Sheets connection, and show data parsing.
-*   `build-and-run.sh`: Utility script to build the Docker image and run it with local credentials mounted.
-*   `Dockerfile`: Defines the Python 3.11-slim environment for the application.
-*   `cloudbuild.yaml`: Configuration for Google Cloud Build to automate deployment to Cloud Run Jobs.
+### Core Modules
+* `main.py`: The application entry point. Handles argument parsing, dependency injection, and orchestrates the main workflow.
+* `models.py`: Domain data structures (`Show`, `CastingRule`, `CastingAlert`) and alert message formatting logic. No external dependencies.
+* `logic.py`: Core business logic for evaluating missed deadlines and grouping alerts by responsible party.
+* `spreadsheet.py`: Google Sheets API integration. Handles authentication, fetching raw data, and parsing it into domain models.
+* `slack.py`: Slack API integration wrapper. Handles user lookup (by name/email) and message dispatching.
+
+### Infrastructure & Operations
+* `build-and-run.sh`: Utility script to build the Docker image and run it locally.
+* `Dockerfile`: Defines the Python 3.11-slim environment for the application.
+* `cloudbuild.yaml`: Configuration for Google Cloud Build to automate deployment to Cloud Run Jobs.
+* `requirements.txt`: Python package dependencies.
 
 ## 📝 License
 
