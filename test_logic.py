@@ -47,6 +47,27 @@ class TestLogic(unittest.TestCase):
         self.assertEqual(alerts[0].role, models.Role.TEAMS)
         self.assertEqual(alerts[0].responsible_party, "U789")
 
+    def test_cancelled_shows_produce_no_alerts(self):
+        today = datetime.date.today()
+        show = models.Show(
+            date=today + datetime.timedelta(days=10),
+            cancelled=True,
+            venue=models.Venue.LOUISVILLE_UNDERGROUND,
+            host="",
+            stage_manager="",
+            greeter="",
+            teams=[],
+        )
+        rule = models.CastingRule(
+            role=models.Role.TEAMS,
+            venues=[models.Venue.LOUISVILLE_UNDERGROUND],
+            responsible_party="U789",
+            deadline=datetime.timedelta(days=14),
+        )
+
+        alerts = logic.find_unfilled_roles([show], [rule])
+        self.assertEqual(alerts, [])
+
 
 if __name__ == "__main__":
     unittest.main()

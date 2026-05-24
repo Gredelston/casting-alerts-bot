@@ -36,6 +36,8 @@ def find_unfilled_roles(
     """
     alerts: list[models.CastingAlert] = []
     for show in upcoming_shows:
+        if show.cancelled:
+            continue
         for rule in casting_rules:
             if show.venue not in rule.venues:
                 continue
