@@ -3,9 +3,9 @@
 """
 Slack API integration module.
 
-This module provides the `SlackClient` class, which wraps the official 
-`slack_sdk.WebClient` to handle user lookups, workspace queries, and 
-message dispatching. It includes a dry-run feature to prevent accidental 
+This module provides the `SlackClient` class, which wraps the official
+`slack_sdk.WebClient` to handle user lookups, workspace queries, and
+message dispatching. It includes a dry-run feature to prevent accidental
 notifications during testing and local development.
 """
 
@@ -136,13 +136,110 @@ class SlackClient:
         logger.debug("Found Slack user ID: %s", user_id)
         return user_id
 
-    def post_message(self, conversation_id: str, message: str) -> None:
+    def get_channel_id_by_name(self, channel_name: str) -> str:
+        """Look up a channel ID by its name.
+
+        Args:
+            channel_name: The channel name to look up, with or without a
+                leading '#'.
+
+        Returns:
+            The Slack channel ID matching the given name.
+
+        Raises:
+            ValueError: If no channel is found with the given name.
+        """
+        target = channel_name.lstrip("#")
+        logger.debug("Searching for Slack channel named '%s'...", target)
+        types = "public_channel,private_channel"
+        cursor = None
+        while True:
+            try:
+                response = self._client.conversations_list(
+                    types=types,
+                    exclude_archived=True,
+                    limit=200,
+                    cursor=cursor,
+                )
+            except slack_sdk.errors.SlackApiError as e:
+                if types != "public_channel" and e.response["error"] == "missing_scope":
+                    # We may lack groups:read for private channels; retry with
+                    # public channels only.
+                    types = "public_channel"
+                    cursor = None
+                    continue
+                raise
+            for channel in response["channels"]:
+                if channel["name"] == target:
+                    logger.debug(
+                        "Found channel ID %s for '#%s'.", channel["id"], target
+                    )
+                    return channel["id"]
+            cursor = response["response_metadata"]["next_cursor"]
+            if not cursor:
+                break
+        raise ValueError(f"No Slack channel found with name '#{target}'")
+
+    def join_channel(self, channel_id: str) -> None:
+        """Join a public channel, ignoring failures if already a member.
+
+        Args:
+            channel_id: The ID of the channel to join.
+        """
+        try:
+            self._client.conversations_join(channel=channel_id)
+        except slack_sdk.errors.SlackApiError as e:
+            # Not fatal: the bot may already be a member, or the channel may
+            # be private (in which case it must be invited manually).
+            logger.debug("Could not join channel %s: %s", channel_id, e)
+
+    def fetch_channel_messages(
+        self, channel_id: str, oldest: float
+    ) -> list[dict[str, Any]]:
+        """Fetch all messages in a channel since a given timestamp.
+
+        Includes message metadata and reactions, so callers can identify the
+        bot's own structured messages and check for acknowledgments.
+
+        Args:
+            channel_id: The ID of the channel to read.
+            oldest: The earliest Unix timestamp of messages to include.
+
+        Returns:
+            A list of Slack message dictionaries.
+        """
+        messages: list[dict[str, Any]] = []
+        cursor = None
+        while True:
+            response = self._client.conversations_history(
+                channel=channel_id,
+                oldest=str(oldest),
+                limit=200,
+                cursor=cursor,
+                include_all_metadata=True,
+            )
+            messages.extend(response["messages"])
+            if not response["has_more"]:
+                break
+            cursor = response["response_metadata"]["next_cursor"]
+        logger.debug("Fetched %d messages from channel %s.", len(messages), channel_id)
+        return messages
+
+    def post_message(
+        self,
+        conversation_id: str,
+        message: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
         """Send a message to the specified user.
 
         Args:
             conversation_id: The channel name, channel ID, user ID, user email,
                 or user's full name to post a message to.
             message: The exact text message to post.
+            metadata: Optional Slack message metadata (event_type and
+                event_payload) to attach, invisible to users but readable by
+                the bot in later runs.
 
         Raises:
             ValueError: If the conversation_id cannot be interpreted or resolved
@@ -182,5 +279,7 @@ class SlackClient:
         logger.debug(
             f"Attempting to send Slack message to conversation {conversation_id}..."
         )
-        self._client.chat_postMessage(channel=conversation_id, text=message)
+        self._client.chat_postMessage(
+            channel=conversation_id, text=message, metadata=metadata
+        )
         logger.info(f"Sent message to {conversation_id}: '''{message}'''")

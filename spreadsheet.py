@@ -3,9 +3,9 @@
 """
 Google Sheets API integration and data parsing module.
 
-This module handles authentication with Google Workspace via Application 
-Default Credentials. It provides functions to fetch raw spreadsheet data 
-and parse those rows into the domain models (Shows and Casting Rules) 
+This module handles authentication with Google Workspace via Application
+Default Credentials. It provides functions to fetch raw spreadsheet data
+and parse those rows into the domain models (Shows and Casting Rules)
 required by the bot's core logic.
 """
 
@@ -85,6 +85,27 @@ def read_sheet_rows(
     return result.get("values", [])
 
 
+def _optional_col_idx(header_row: list[str], column_name: str) -> int | None:
+    """Find a column's index, tolerating its absence.
+
+    Args:
+        header_row: The spreadsheet's header row.
+        column_name: The column header to search for.
+
+    Returns:
+        The column's index, or None (with a warning) if the column is missing.
+    """
+    try:
+        return header_row.index(column_name)
+    except ValueError:
+        logger.warning(
+            "Column '%s' not found in the casting sheet; treating it as empty "
+            "for all shows.",
+            column_name,
+        )
+        return None
+
+
 def parse_shows(casting_data: list[list[str]]) -> list[models.Show]:
     """Parse raw spreadsheet rows into Show objects.
 
@@ -106,6 +127,9 @@ def parse_shows(casting_data: list[list[str]]) -> list[models.Show]:
     stage_manager_col_idx = header_row.index("Stage Manager")
     greeter_col_idx = header_row.index("Greeter")
     teams_col_idx = header_row.index("Team Order")
+    theme_col_idx = _optional_col_idx(header_row, "Theme")
+    host_cc_col_idx = _optional_col_idx(header_row, "Host CC Contact")
+    guest_cc_col_idx = _optional_col_idx(header_row, "Guest Team CC Contact")
     shows: list[models.Show] = []
     for row in casting_data[1:]:
         if not row[date_col_idx]:
@@ -123,6 +147,13 @@ def parse_shows(casting_data: list[list[str]]) -> list[models.Show]:
                     stage_manager=row[stage_manager_col_idx],
                     greeter=row[greeter_col_idx],
                     teams=row[teams_col_idx].split("\n"),
+                    theme=row[theme_col_idx] if theme_col_idx is not None else "",
+                    host_cc_contact=(
+                        row[host_cc_col_idx] if host_cc_col_idx is not None else ""
+                    ),
+                    guest_cc_contact=(
+                        row[guest_cc_col_idx] if guest_cc_col_idx is not None else ""
+                    ),
                 )
             )
         except Exception as e:

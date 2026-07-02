@@ -3,9 +3,9 @@
 """
 Core data structures and domain models for the Casting Alerts Bot.
 
-This module defines the classes, enums, and exceptions used to represent 
-the fundamental concepts of the application, including improv shows, venues, 
-casting rules, and triggered alerts. It is designed to be free of external 
+This module defines the classes, enums, and exceptions used to represent
+the fundamental concepts of the application, including improv shows, venues,
+casting rules, and triggered alerts. It is designed to be free of external
 API dependencies.
 """
 
@@ -37,6 +37,11 @@ class Show:
         stage_manager: The assigned stage manager.
         greeter: The assigned greeter/door person.
         teams: A list of improv teams scheduled to perform.
+        theme: The show's theme, if any.
+        host_cc_contact: The casting committee member responsible for
+            following up with the host before the show.
+        guest_cc_contact: The casting committee member responsible for
+            following up with the guest teams before the show.
     """
 
     date: datetime.date
@@ -46,6 +51,9 @@ class Show:
     stage_manager: str
     greeter: str
     teams: list[str]
+    theme: str = ""
+    host_cc_contact: str = ""
+    guest_cc_contact: str = ""
 
     def is_past(self) -> bool:
         """Check whether a show occurred in the past.
@@ -54,6 +62,17 @@ class Show:
             True if the show's date is strictly before today, False otherwise.
         """
         return self.date < datetime.date.today()
+
+
+SHOW_BRANDS = {
+    Venue.THE_END: "Laughayette",
+    Venue.LOUISVILLE_UNDERGROUND: "Improvarama",
+}
+
+VENUE_DIRECTIONS = {
+    Venue.THE_END: "The End in Lafayette",
+    Venue.LOUISVILLE_UNDERGROUND: "the Louisville Underground",
+}
 
 
 class Role(enum.StrEnum):
@@ -103,6 +122,187 @@ class CastingAlert:
     role: Role
     responsible_party: str
     deadline: datetime.datetime
+
+
+class FollowUpKind(enum.StrEnum):
+    """The kinds of pre-show follow-ups a casting committee member performs."""
+
+    HOST = "host"
+    GUEST_TEAMS = "guest_teams"
+
+
+@dataclasses.dataclass
+class FollowUpReminder:
+    """A reminder for a casting committee member to follow up before a show.
+
+    Attributes:
+        show: The upcoming show that needs a human follow-up.
+        kind: Which follow-up is needed (host or guest teams).
+        contact: The casting committee member responsible for the follow-up,
+            as listed in the spreadsheet (e.g. "Cody").
+    """
+
+    show: Show
+    kind: FollowUpKind
+    contact: str
+
+
+# Identifies this bot's follow-up reminder messages in Slack message metadata,
+# so later runs can find them and check for :+1: acknowledgments.
+FOLLOWUP_EVENT_TYPE = "cc_followup_reminder"
+
+
+def followup_metadata(reminder: FollowUpReminder) -> dict:
+    """Build the Slack message metadata that identifies a follow-up reminder.
+
+    Args:
+        reminder: The follow-up reminder being posted.
+
+    Returns:
+        A metadata dict suitable for chat.postMessage, uniquely identifying
+        the (show, kind) pair so future runs can detect acknowledgments.
+    """
+    return {
+        "event_type": FOLLOWUP_EVENT_TYPE,
+        "event_payload": {
+            "show_date": reminder.show.date.isoformat(),
+            "kind": reminder.kind.value,
+        },
+    }
+
+
+def _followup_footer() -> str:
+    return (
+        "\n\nOnce you've reached out, please react to this message with a "
+        ":+1: and I'll stop reminding you.\n\n"
+        "🤖 _If you have any issues with this automation, please contact "
+        "Greg Edelston._"
+    )
+
+
+def _show_brand(show: Show) -> str:
+    return SHOW_BRANDS.get(show.venue, show.venue.value)
+
+
+def _venue_directions(show: Show) -> str:
+    return VENUE_DIRECTIONS.get(show.venue, show.venue.value)
+
+
+def format_host_followup_reminder(reminder: FollowUpReminder, mention: str) -> str:
+    """Write the #casting-committee reminder to follow up with a show's host.
+
+    Args:
+        reminder: The follow-up reminder to format.
+        mention: Slack mention text for the responsible contact (e.g.
+            "<@U123ABC>", or a plain name if the user couldn't be resolved).
+
+    Returns:
+        The full Slack message text, including a copyable sample message.
+    """
+    show = reminder.show
+    brand = _show_brand(show)
+    formatted_date = show.date.strftime("%A, %B %-d")
+    host = show.host.strip() or "(host TBD)"
+
+    todo_lines = ["• Confirm they're still available to host the show"]
+    sample_theme = ""
+    if show.theme.strip():
+        todo_lines.append(
+            f"• Make sure they know the show's theme is *{show.theme.strip()}*, "
+            f"that they're our main ambassador for the theme, and ask them to "
+            f"find some ways to incorporate it into their hosting"
+        )
+        sample_theme = (
+            f" Also, this show's theme is *{show.theme.strip()}* — as host, "
+            f"you're our main ambassador for the theme, so we'd love for you "
+            f"to find some fun ways to work it into your hosting!"
+        )
+    todo_lines.append(
+        "• Remind them that all the info they need is in the show's Slack channel"
+    )
+
+    sample = (
+        f"> Hey {host}! Just checking in ahead of {brand} on {formatted_date} — "
+        f"are you still good to host?{sample_theme} All the info you need is in "
+        f"the show's Slack channel. Thanks so much! 🎉"
+    )
+
+    return (
+        f"👋 Hey {mention}! *{brand}* on *{formatted_date}* is one week out "
+        f"(or less), and you're the Host CC Contact. Please reach out to our "
+        f"host, *{host}*, to:\n" + "\n".join(todo_lines) + "\n\n"
+        f"Here's a sample message you're welcome to copy:\n{sample}"
+        + _followup_footer()
+    )
+
+
+def format_guest_teams_followup_reminder(
+    reminder: FollowUpReminder, mention: str
+) -> str:
+    """Write the #casting-committee reminder to follow up with guest teams.
+
+    Args:
+        reminder: The follow-up reminder to format.
+        mention: Slack mention text for the responsible contact (e.g.
+            "<@U123ABC>", or a plain name if the user couldn't be resolved).
+
+    Returns:
+        The full Slack message text, including a copyable sample message.
+    """
+    show = reminder.show
+    brand = _show_brand(show)
+    where = _venue_directions(show)
+    formatted_date = show.date.strftime("%A, %B %-d")
+    teams = [t.strip() for t in show.teams if t.strip()]
+    teams_text = ", ".join(teams) if teams else "(no teams listed yet)"
+
+    todo_lines = [
+        "• Confirm they're ready for the show",
+        f"• Confirm the where & when: {where}; call time is generally 6:55 PM "
+        f"for the 8:00 showtime, but arriving a bit later is OK if they'd prefer",
+        "• Ask them to remind us of their social media handles so we can tag "
+        "them in our promotional posts",
+        "• Offer to send them some promotional materials they can use in "
+        "their own social posts",
+    ]
+
+    sample = (
+        f"> Hey folks! Looking forward to having you at {brand} at {where} on "
+        f"{formatted_date}! A few things:\n"
+        f"> 1. Are you all set for the show? Call time is generally 6:55 PM "
+        f"for the 8:00 showtime — if you'd prefer to arrive a bit later, "
+        f"that's totally fine, just let us know.\n"
+        f"> 2. Could you remind us of your social media handles so we can tag "
+        f"you in our promotional posts?\n"
+        f"> 3. We'd be happy to send you some promotional materials you can "
+        f"use in your own social posts — just say the word!\n"
+        f"> See you soon! 🎉"
+    )
+
+    return (
+        f"👋 Hey {mention}! *{brand}* on *{formatted_date}* is one week out "
+        f"(or less), and you're the Guest Team CC Contact. Please reach out "
+        f"to the guest teams ({teams_text}) to:\n" + "\n".join(todo_lines) + "\n\n"
+        f"Here's a sample message you're welcome to copy:\n{sample}"
+        + _followup_footer()
+    )
+
+
+def format_followup_reminder(reminder: FollowUpReminder, mention: str) -> str:
+    """Write the #casting-committee reminder message for a follow-up.
+
+    Args:
+        reminder: The follow-up reminder to format.
+        mention: Slack mention text for the responsible contact.
+
+    Returns:
+        The full Slack message text for the reminder's kind.
+    """
+    match reminder.kind:
+        case FollowUpKind.HOST:
+            return format_host_followup_reminder(reminder, mention)
+        case FollowUpKind.GUEST_TEAMS:
+            return format_guest_teams_followup_reminder(reminder, mention)
 
 
 def format_alerts(alerts: list[CastingAlert]) -> str:

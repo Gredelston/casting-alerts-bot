@@ -1,6 +1,6 @@
 # Casting Alerts Bot
 
-A Python automation for Improv Boulder that monitors casting spreadsheets and alerts show production teams when show roles are unassigned. 
+A Python automation for Improv Boulder that monitors casting spreadsheets, alerts show production teams when show roles are unassigned, and reminds casting committee members to follow up with hosts and guest teams in the week before each show. 
 
 This repository is designed to be easily understandable by AI agents. If you are an AI assistant reading this, refer to the **Context for AI Agents** section for a quick summary of the architecture and project state.
 
@@ -13,11 +13,18 @@ This repository is designed to be easily understandable by AI agents. If you are
 ## 🤖 Context for AI Agents
 
 **Domain & Workflow:**
-This application is a scheduled Cloud Run job that evaluates upcoming improv shows against defined casting rules (deadlines for when certain roles like Host, Stage Manager, Greeter, or Teams need to be filled). 
+This application is a scheduled Cloud Run job (triggered daily at 8 AM Denver time by Cloud Scheduler) with two responsibilities:
+
+*Unfilled-role alerts (Wednesdays & Saturdays only):* It evaluates upcoming improv shows against defined casting rules (deadlines for when certain roles like Host, Stage Manager, Greeter, or Teams need to be filled).
 1. **Data Source:** It reads show schedules and casting rules from a Google Spreadsheet using `google-api-python-client` with Application Default Credentials.
 2. **Logic:** It compares the current date to the show date minus the rule deadline. If a role is missing and the deadline has passed, an alert is generated.
 3. **Dispatch:** It connects to Slack using `slack_sdk` to look up users by name/email or channel ID and dispatches a friendly Slack message. Alerts targeting the same user are combined into a single message.
-4. **Testing:** A full suite of `unittest` tests are available to verify models, logic, spreadsheet parsing, and alert formatting.
+
+*Pre-show follow-up reminders (daily):* Starting one week before each show, it posts reminders in `#casting-committee` asking the humans listed in the spreadsheet's **Host CC Contact** and **Guest Team CC Contact** columns to personally follow up with the show's host and guest teams. Each reminder tags the contact (short names Cody/Steve/Greg map to full Slack names), includes a copyable sample message (including the show's **Theme** column, if set, for host reminders), and asks the contact to react with :+1: when done. The bot identifies its own prior reminders via Slack message metadata and re-posts daily until a reminder for that (show, kind) receives a :+1: reaction. Shows with a blank contact cell are skipped with a warning log.
+
+**Slack scopes required:** `chat:write`, `chat:write.public`, `users:read`, `users:read.email` (alerts), plus `channels:read`, `channels:history`, and `channels:join` (follow-up reminders). If the history scopes are missing, follow-ups are skipped with an error log and the job still succeeds.
+
+**Testing:** A full suite of `unittest` tests are available to verify models, logic, spreadsheet parsing, and alert/reminder formatting.
 
 ## 🚀 Local Setup
 
@@ -81,6 +88,12 @@ python main.py --dry-run
 Increases log verbosity.
 ```bash
 python main.py --debug
+```
+
+**Force Role Alerts:**
+Unfilled-role alerts normally only go out on Wednesdays and Saturdays; this flag sends them regardless of the day.
+```bash
+python main.py --force-role-alerts
 ```
 
 ### Running with Docker
