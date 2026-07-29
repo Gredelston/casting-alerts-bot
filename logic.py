@@ -239,13 +239,24 @@ def dispatch_followups(
         if e.response["error"] == "missing_scope":
             logger.error(
                 "Slack token is missing scopes needed for follow-up reminders "
-                "(channels:read, channels:history, channels:join). Please add "
-                "them to the Slack app and reinstall it. Skipping follow-ups. "
-                "Error: %s",
+                "(channels:read, channels:history, channels:join; plus "
+                "groups:read and groups:history if the channel is private). "
+                "Please add them to the Slack app and reinstall it. Skipping "
+                "follow-ups. Error: %s",
                 e,
             )
             return
         raise
+    except ValueError as e:
+        logger.error(
+            "Could not find the %s channel; skipping follow-up reminders. If "
+            "the channel is private, the bot must be invited to it and the "
+            "Slack token needs the groups:read and groups:history scopes. "
+            "Error: %s",
+            CASTING_COMMITTEE_CHANNEL,
+            e,
+        )
+        return
 
     acknowledged: set[tuple[str, str]] = set()
     posted_today: set[tuple[str, str]] = set()

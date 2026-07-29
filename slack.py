@@ -56,7 +56,7 @@ class SlackClient:
         """
         token = os.environ.get("SLACK_BOT_TOKEN")
         if not token:
-            raise KeyError(f"Missing env var SLACK_BOT_TOKEN. Env: {os.env}")
+            raise KeyError("Missing env var SLACK_BOT_TOKEN.")
         if token.startswith('"') or token.startswith("'"):
             raise ValueError(
                 f"SLACK_BOT_TOKEN is incorrectly wrapped in quotes. Literal value: {token}"
@@ -75,12 +75,11 @@ class SlackClient:
         cursor = None
         logger.debug("Fetching list of all Slack users...")
         while True:
-            response = self._client.users_list(cursor=cursor)
+            response = self._client.users_list(cursor=cursor, limit=200)
             if response["members"]:
                 users.extend(response["members"])
-            if response["response_metadata"]["next_cursor"]:
-                cursor = next_cursor
-            else:
+            cursor = response["response_metadata"]["next_cursor"]
+            if not cursor:
                 break
         logger.debug("Found %d Slack users.", len(users))
         return users
@@ -115,9 +114,10 @@ class SlackClient:
             logger.debug("Found Slack user ID %s for user '%s'.", user_id, name)
             return user_id
         if not allow_none:
-            raise ValueError("No Slack user found with name '{name}'")
+            raise ValueError(f"No Slack user found with name '{name}'")
         logger.debug(
-            "No Slack user found with name '%s', but allowing due to allow_none."
+            "No Slack user found with name '%s', but allowing due to allow_none.",
+            name,
         )
         return ""
 
@@ -266,11 +266,12 @@ class SlackClient:
                 "Conversation ID '%s' does not match a regular format. Attempting to find user with that name...",
                 conversation_id,
             )
-            conversation_id = self.get_user_id_by_name(conversation_id, allow_none=True)
-            if not conversation_id:
+            user_id = self.get_user_id_by_name(conversation_id, allow_none=True)
+            if not user_id:
                 raise ValueError(
-                    "Could not interpret Slack conversation ID: conversation_id"
+                    f"Could not interpret Slack conversation ID: {conversation_id}"
                 )
+            conversation_id = user_id
         if self._dry_run:
             logger.info("Skipping Slack message for dry run.")
             logger.info(f"Target conversation: {conversation_id}")

@@ -207,6 +207,13 @@ class TestDispatchFollowups(unittest.TestCase):
         logic.dispatch_followups([self.host_reminder], self.slack_client)
         self.slack_client.post_message.assert_not_called()
 
+    def test_channel_not_found_is_nonfatal(self):
+        self.slack_client.get_channel_id_by_name.side_effect = ValueError(
+            "No Slack channel found with name '#casting-committee'"
+        )
+        logic.dispatch_followups([self.host_reminder], self.slack_client)
+        self.slack_client.post_message.assert_not_called()
+
     def test_unknown_contact_falls_back_to_bold_name(self):
         self.slack_client.fetch_channel_messages.return_value = []
         self.slack_client.get_user_id_by_name.return_value = ""
