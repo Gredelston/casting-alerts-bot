@@ -13,8 +13,34 @@ import dataclasses
 import datetime
 import enum
 import logging
+import re
 
 logger = logging.getLogger(__name__)
+
+# Labels in the Team Order column that mark a slot still needing a real team
+# (e.g. "Guest Team (Priority)", "TBD"), optionally followed by a number.
+# Parenthetical qualifiers are stripped before matching.
+_TEAM_PLACEHOLDER_RE = re.compile(
+    r"(guest team|open slot|open|placeholder|tba|tbd|\?+)(\s+\d+)?",
+    re.IGNORECASE,
+)
+
+
+def is_placeholder_team(team: str) -> bool:
+    """Check whether a Team Order entry is a placeholder rather than a team.
+
+    Args:
+        team: One line from the spreadsheet's Team Order cell.
+
+    Returns:
+        True if the entry is blank or a placeholder label like
+        "Guest Team (Priority)" or "TBD", False if it names a real team.
+    """
+    base = re.sub(r"\([^)]*\)", " ", team)
+    base = " ".join(base.split())
+    if not base:
+        return True
+    return _TEAM_PLACEHOLDER_RE.fullmatch(base) is not None
 
 
 class Venue(enum.StrEnum):
@@ -36,7 +62,9 @@ class Show:
         host: The assigned host for the show.
         stage_manager: The assigned stage manager.
         greeter: The assigned greeter/door person.
-        teams: A list of improv teams scheduled to perform.
+        teams: The Team Order cell's lines, which may mix real team names
+            with placeholder labels like "Guest Team (Priority)"; use
+            real_teams() for just the booked teams.
         theme: The show's theme, if any.
         host_cc_contact: The casting committee member responsible for
             following up with the host before the show.
@@ -62,6 +90,18 @@ class Show:
             True if the show's date is strictly before today, False otherwise.
         """
         return self.date < datetime.date.today()
+
+    def real_teams(self) -> list[str]:
+        """Return the actually-booked teams, excluding placeholder labels.
+
+        The Team Order cell often holds placeholder lines like
+        "Guest Team (Priority)" for slots that still need casting; those
+        must not count as cast teams.
+
+        Returns:
+            The stripped names of the real teams scheduled to perform.
+        """
+        return [t.strip() for t in self.teams if not is_placeholder_team(t)]
 
 
 SHOW_BRANDS = {
@@ -253,7 +293,7 @@ def format_guest_teams_followup_reminder(
     brand = _show_brand(show)
     where = _venue_directions(show)
     formatted_date = show.date.strftime("%A, %B %-d")
-    teams = [t.strip() for t in show.teams if t.strip()]
+    teams = show.real_teams()
     teams_text = ", ".join(teams) if teams else "(no teams listed yet)"
 
     todo_lines = [
@@ -332,7 +372,7 @@ def format_alerts(alerts: list[CastingAlert]) -> str:
         )
 
         if alert.role == Role.TEAMS:
-            cast_teams = [t.strip() for t in alert.show.teams if t.strip()]
+            cast_teams = alert.show.real_teams()
             if cast_teams:
                 msg += f" (Currently cast: {', '.join(cast_teams)})"
 
@@ -351,7 +391,7 @@ def format_alerts(alerts: list[CastingAlert]) -> str:
 
         extra_info = ""
         if alert.role == Role.TEAMS:
-            cast_teams = [t.strip() for t in alert.show.teams if t.strip()]
+            cast_teams = alert.show.real_teams()
             if cast_teams:
                 extra_info = f" (Currently cast: {', '.join(cast_teams)})"
 

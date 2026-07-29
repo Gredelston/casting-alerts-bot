@@ -69,7 +69,7 @@ def find_unfilled_roles(
             is_met: bool
             match rule.role:
                 case models.Role.TEAMS:
-                    is_met = len(show.teams) >= 3
+                    is_met = len(show.real_teams()) >= 3
                 case models.Role.HOST:
                     is_met = bool(show.host.strip())
                 case models.Role.STAGE_MANAGER:

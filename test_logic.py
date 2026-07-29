@@ -47,6 +47,28 @@ class TestLogic(unittest.TestCase):
         self.assertEqual(alerts[0].role, models.Role.TEAMS)
         self.assertEqual(alerts[0].responsible_party, "U789")
 
+    def test_placeholder_teams_do_not_satisfy_teams_rule(self):
+        today = datetime.date.today()
+        show = models.Show(
+            date=today + datetime.timedelta(days=3),
+            cancelled=False,
+            venue=models.Venue.THE_END,
+            host="John Doe",
+            stage_manager="Jane Doe",
+            greeter="Jim Doe",
+            teams=["Team A", "Guest Team (Priority)", "TBD"],
+        )
+        rule = models.CastingRule(
+            role=models.Role.TEAMS,
+            venues=[models.Venue.THE_END],
+            responsible_party="U789",
+            deadline=datetime.timedelta(days=14),
+        )
+
+        alerts = logic.find_unfilled_roles([show], [rule])
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0].role, models.Role.TEAMS)
+
     def test_cancelled_shows_produce_no_alerts(self):
         today = datetime.date.today()
         show = models.Show(
